@@ -1,0 +1,90 @@
+---
+title: "Idea"
+author: "Shunkei Kakimoto"
+date: ""
+output: 
+  html_document:
+    number_sections: no
+    theme: flatly
+    toc_float: no
+    toc: yes
+  pdf_document:
+    highlight: zenburn
+    number_sections: yes
+    toc: yes
+geometry: margin=0.75in
+bibliography: hete_allocation.bib
+link-citations: true
+linkcolor: yes
+urlcolor: blue
+---
+
+```{r echo = F, results='hide', message=FALSE}
+library(knitr)
+library(here)
+
+# === set wd ===#
+# Notes: not really necessary to set the working directory as long as this Rmd file is part of an R project and the evaluation directory was set to "Project".
+
+opts_knit$set(root.dir = here())
+# setwd(here())
+
+options(htmltools.dir.version = FALSE)
+options(knitr.duplicate.label = "allow")
+
+opts_chunk$set(
+  fig.align = "center", 
+  fig.retina = 5,
+  warning = F, 
+  message = F,
+  cache = FALSE, # <-- T
+  cache.lazy = FALSE,
+  echo = F
+  )
+```
+
+# Keywords:
++ 
+
+
+
+# Idea: 
+
++ The Republican River Basin in Nebraska
+  + Upper Republican NRD
+  + Middle Republican NRD
+  + Lower Republican NRD
+  + Tri-Basin Republican NRD
+
++ there have been groundwater allocation limits since 1980
+
++ Objectives:
+  +  whether the allocation limits imposed by the governing groundwater users (i.e., the local managers) have reduced water use
+  +  As a corollary, the associated energy used for pumping groundwater (why?)
+  +  The heterogeneity of the allocation impacts on farmers' irrigation behavior
+  +  
+
+
+# Background
+
++ Existing research shows that these types of joint arrangements may either enhance or reduce effective regulation [@scholz2006cooptation]
++ NRDs may choose to pass regulations that do not impose significant restrictions on their users, but satisfy the requirements of state regulators [@ulph2000harmonization; @bordignon2001optimal] 
+
+# Research Gap
+
++ the past analyses all consider changes in price from exogenous shifts in markets or centralized policies instead of policies determined by local managers.
+
+
+# Literature 
+
++ search the papers studying the irrigation-related policy impacts on farmers' irrigation activity
+
++
+
+
+
+# Further steps
+
++ subsidy from the government
+
+

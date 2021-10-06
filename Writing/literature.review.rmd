@@ -1,0 +1,139 @@
+---
+title: "Literature"
+author: "Shunkei Kakimoto"
+date: ""
+output: 
+  html_document:
+    number_sections: no
+    theme: flatly
+    toc_float: no
+    toc: yes
+  pdf_document:
+    highlight: zenburn
+    number_sections: yes
+    toc: yes
+geometry: margin=0.75in
+bibliography: hete_allocation.bib
+link-citations: true
+linkcolor: yes
+urlcolor: blue
+---
+
+```{r echo = F, results='hide', message=FALSE}
+library(knitr)
+library(here)
+
+# === set wd ===#
+# Notes: not really necessary to set the working directory as long as this Rmd file is part of an R project and the evaluation directory was set to "Project".
+
+opts_knit$set(root.dir = here())
+# setwd(here())
+
+options(htmltools.dir.version = FALSE)
+options(knitr.duplicate.label = "allow")
+
+opts_chunk$set(
+  fig.align = "center", 
+  fig.retina = 5,
+  warning = F, 
+  message = F,
+  cache = FALSE, # <-- T
+  cache.lazy = FALSE,
+  echo = F
+  )
+```
+
+### Terms
++ extensive and intensive margin effects (in an agricultural context): 
+  +  direct effects; a producer substitutes increased management efforts for applied water to reduce his water applications
+  +  indirect effects; the profitability of water-intensive crops will decrease, and producers will either switch to a less water-intensive crop. adopt precision irrigation technology, or both (changes in capital investment and land allocation)  
+
++ groundwater banking: During wet years when the district receives a large allocation of surface water, it uses spreading fields to store some of that water under- ground. During dry years when the district receives a small allocation, it pumps the reserve water to deliver to its surface water users. [@schoengold2006price]
+
+### Useful Phrases
+
+
+
+# The impacts of price changes on irrigation behavior
+
+## Groundwater
++ **@hendricks2012fixed**; estimated irrigation water demand taking the advantage of spatially and temporally varying the cost of pumping using field-level panel data from Kansas, and found that irrigation water demand is highly inelastic in Kansas. Furthermore, they applied their demand estimates to calculate the cost of obtaining a given reduction in agricultural water use. 
+  + <span style="color:red"> Interesting: </span>
+    +  decompose the elasticity is decomposed into extensive, direct intensive, and indirect intensive margins.  
+
++ **@mieno2017price**; (interesting)
+  + showed that measurement errors in irrigation costs can lead to misleading policy implications related to water and energy pricing.
+  + <span style="color:red"> Interesting: </span>
+    + an increasingly common source of measurement errors is the spatial interpolation of geographic and climate data such as precipitation, temperature, soil moisture content, and depth to groundwater table.
+    + Measurement errors also came from assuming uniformity in variables that are in reality heterogeneous across individuals or over time.
+
++ **@ogg1989western**; examined farmer's hectare water use response to price changes
+  +　Farmer's estimates of energy costs per cubic meter for pumping groudwater searved as a proxy variable for the price of water
+  +　 
+
+
+## Surface water 
++ **@schoengold2006price**; found that the price elasticity of agricultural water demand is greater than previous studies have found. They also showed the evidence of increased levels of fallow land and the adoption of precision irrigation technologies with higher water prices, and a large cost of adjustment in changing land allocation.
+  + 
+  + <span style="color:red"> Interesting: </span>
+    + it is sometimes postulated that the price of water delivered to farmers is so highly subsidized that there is no significant demand response to modest price changes 
+
+
+
+
+
+## Policy 
++ **@johansson2002pricing**; (interesting, useful paper for studying water allocation problems)
+  + reviewed the mechanisms of allocating irrigation water with a focus on efficiency, equity, water institutions, and the political economy of water allocation.
+
+
++ **@ulph2000harmonization**; federal level vs state level
+  + whether environmental policy should be set at the state or federal level?
+      + asymmetry of information: environmental damage costs are known only by state governments, but not by the federal level. 
+      + In this case, it is believed that state governments acting non-cooperatively would set environmental policies which are too lax compared to the policies that would be set if they acted cooperatively.
+
++ **@bordignon2001optimal**: federal government vs regional(state) government
+  + deal with the asymmetric information between federal and regional government over optimal regional redistribution
+
+
++ **@scholz2006cooptation**:
+  + decentralized processes create autonomous policy networks that can resist central guidance and coopt authoritative institutions of governance 
+  + deal with water pollution policies in which centralized regulation and local watershed partnerships both play an important role. 
+    +  examine the impact of watershed partnerships on government outputs(enforcement activities of the EPA) as well as on compliance by permit holders.
+
+
++ **@leach2002stakeholder**: 
+  +  **stakeholder partnerships**: consist of representatives from private interest groups, local public agencies, and state or federal agencies, who convene as a group, periodically and indefinitely, to discuss or negotiate public policy within a broadly defined issue area"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### References
+
+<div id="refs"></div>

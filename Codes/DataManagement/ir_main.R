@@ -26,38 +26,45 @@
 # Preparation
 #===================================
 #--- Install/Load packages with pacman ---#
-source('~/Dropbox/R_libraries_load/library.R')
+# source('~/Dropbox/R_libraries_load/library.R')
+
+library(here)
+library(data.table)
+library(tidyverse)
 
 #===================================
 # Import and merge data from NebraskaWaterProjectsData 
 #===================================
-setwd('~/Dropbox/NebraskaWaterProjectsData')
+# setwd('~/Dropbox/NebraskaWaterProjectsData')
 
 #--------------------------
 # Import datasets  
 #--------------------------
-#--- Pumping ---#
-pump_comp <- readRDS('./Data/Pumping/Processed/pumping.rds') %>% 
+#--- Pumping ---# (not available)
+pump_comp <- readRDS('Shared/Data/Pumping/Processed/pumping.rds') %>% 
 	setkey(wellid)
 
-#--- Registration ---#
-rgs <- readRDS('./Data/WellRegistrationRaw/registration.rds') %>% 
+#--- Registration ---# (not available)
+rgs <- readRDS('Shared/Data/WellRegistrationRaw/registration.rds') %>% 
 	setkey(wellid)
 
-#--- PRISM ---#
-weather_y <- readRDS('./Data/PRISM/prism_y_81_16.rds') %>% 
+#--- PRISM ---# (not available: prism_y_81_16.rds)
+weather_y <- readRDS('Shared/Data/PRISM/prism_y_81_16.rds') %>% 
 	setkey(prism_id,year)  
-	
-well_to_grid <- readRDS('./Data/PRISM/well_to_grid.rds') %>% 
+
+
+well_to_grid <- readRDS('Shared/Data/PRISM/well_to_grid.rds') %>% 
 	setkey(wellid)
 
 #--- Set working directory ---#
-setwd('~/Dropbox/CollaborativeResearch/AllocationImpacts')
+# setwd('~/Dropbox/CollaborativeResearch/AllocationImpacts')
 
 #--- highway 183  ---#
-east_or_west <- readRDS('./Data/east_or_west.rds') %>% 
+east_or_west <- readRDS('Shared/Data/east_or_west.rds') %>% 
 	setkey(wellid)
 
+east_or_west <- readRDS(here('Shared/Data/east_or_west.rds')) %>% 
+	setkey(wellid)
 
 #--------------------------
 # Merge
@@ -130,16 +137,17 @@ data <- left_join(data,east_or_west,by='wellid') %>%
 		) %>% 
 	data.table()
 
+
 #--------------------------
 # Save as an intermediate dataset
 #--------------------------
 # this data set is used to create buffers and well-buffer identification
-saveRDS(data,'./Data/merged_data.rds')
+# saveRDS(data,'./Data/merged_data.rds')
 
 #===================================
 # Merge data from the current project
 #===================================
-data <- readRDS('./Data/merged_data.rds')
+data <- readRDS('Shared/Data/merged_data.rds')
 
 #--------------------------
 # Buffers
@@ -148,7 +156,7 @@ data <- readRDS('./Data/merged_data.rds')
 # source('./Code/DataManagement/rrb_buffer_identify.R')
 
 #--- merge ---#
-buf_id <- readRDS('./Data/Geographic/NRD_buffers/buffer_identified.rds') 
+buf_id <- readRDS('Shared/Data/Geographic/NRD_buffers/buffer_identified.rds') 
 
 #--- with buffer dummies ---#
 data <- left_join(data,buf_id,by='wellid') %>% 
@@ -162,7 +170,7 @@ data <- left_join(data,buf_id,by='wellid') %>%
 # source('./Code/DataManagement/ssurgo.R')
 
 #--- merge ---#
-well_soil <- readRDS('./Data/ssurgo_soil.rds')  
+well_soil <- readRDS('Shared/Data/ssurgo_soil.rds')  
 
 #--- merge ---#
 data <- left_join(data,well_soil,by='wellid') %>% 

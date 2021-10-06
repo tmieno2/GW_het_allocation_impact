@@ -7,16 +7,19 @@
 # Preparation
 #===================================
 #--- Install/Load packages with pacman ---#
-source('~/Dropbox/R_libraries_load/library.R')
+# source('~/Dropbox/R_libraries_load/library.R')
 
-#--- set wd ---#
-setwd('~/Dropbox/CollaborativeResearch/AllocationImpacts')
+library(here)
+library(sf)
+library(tidyverse)
+library(data.table)
+
 
 #--------------------------
 # Import datasets  
 #--------------------------
 #--- LRNRD  ---#
-NRD_LR <- st_read(dsn = './Data/Geographic/NRDUTM', 'NRDUTM') %>% 
+NRD_LR <- st_read(dsn = here('Shared/Data/Geographic/NRDUTM'), 'NRDUTM') %>% 
   filter(NRD_Name=='Lower Republican')  
 
 #--- Registration ---#

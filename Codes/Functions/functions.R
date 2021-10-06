@@ -3,6 +3,71 @@
 ######################################
 # written by Taro Mieno on 04/09/2016
 
+
+
+
+# CF_run <- function(data,rates,var_ls,cl_id=NA){
+#   #=== treatment assignment ===#
+#   data_temp_dt <- data[treat_var %in% rates,] %>%
+#     .[,trt:=ifelse(treat_var==rates[1],0,1)] %>% 
+#     .[,id:=1:nrow(.)]
+
+#   # data_temp_dt <- balance_data(data_temp_dt,var_ls_all)
+
+#   #=== causal forest analysis ===#
+#   X <- data_temp_dt[,var_ls,with=FALSE]
+#   Y <- data_temp_dt[,yield]
+#   W <- data_temp_dt[,trt]
+
+#   if (!is.na(cl_id)){
+#     cl <- data_temp_dt[,cl_id]
+#   }
+  
+
+#   #=== preliminary runs ===#
+#   Y_forest <- regression_forest(X,Y)
+#   Y_hat <- predict(Y_forest)$predictions
+
+#   W_forest <- regression_forest(X,W)
+#   W_hat <- predict(W_forest)$predictions
+
+#   # #=== raw forest ===#
+#   # tau_forest_raw <- causal_forest(X, Y, W, Y.hat=Y_hat,W.hat=W_hat)
+#   # var_imp <- variable_importance(tau_forest_raw)
+#   # var_imp > mean(var_imp)
+
+#   #=== causal forest analysis ===#
+#   if (!is.na(cl_id)) {
+#     #--- if cl_id is present ---#
+#     tau_forest_temp <- causal_forest(X, Y, W,
+#       Y.hat=Y_hat,
+#       W.hat=W_hat,
+#       num.trees=4000,
+#       # min.node.size=10,
+#       cluster=cl,
+#       # tune.parameters=''
+#       # tune.parameters='all'
+#       tune.parameters=c("sample.fraction", "mtry", "honesty.fraction", "honesty.prune.leaves", "alpha", "imbalance.penalty")
+#     )
+
+#   } else {
+#     #--- if cl_id is NOT present ---#
+#     tau_forest_temp <- causal_forest(X, Y, W,
+#       Y.hat=Y_hat,
+#       W.hat=W_hat,
+#       num.trees=4000,
+#       min.node.size=10,
+#       # tune.parameters=''
+#       # tune.parameters='all'
+#       tune.parameters=c("sample.fraction", "mtry", "honesty.fraction", "honesty.prune.leaves", "alpha", "imbalance.penalty")
+#     )
+#   }
+
+#   return(tau_forest_temp)
+# }
+
+
+
 #===================================
 #  Visualize CF results
 #===================================
