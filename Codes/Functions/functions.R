@@ -71,30 +71,43 @@
 #===================================
 #  Visualize CF results
 #===================================
-get_impact <- function(cf_res,data_base,var_ls,var_name){
+#' Description
+#' + get_impact(): Calculate the HTE (prediction) for a specific variables
+#' + gen_impact_viz(): run get_impact() for all the variables and visualize 
 
+get_impact <- function(cf_res,data_base,var_ls,var_name){
+	# cf_res= cf1; data_base=data_reg_case3; treat_var='treat2'; var_ls= cov_ls
+	# var_name = var_ls[[1]]
+
+	#- make summary table -#
   X_eval_base <- copy(data_base)[,var_ls,with=FALSE] %>%
     as_tibble(.) %>% 
     summarize_all(mean) %>%
     data.table()
 
+  #- change the name of a target variable to `temp_var` -#
   data_temp <- copy(data_base) %>%
     setnames(var_name,'temp_var')
 
+  #- define the range of `temp_var` values used for prediction -#
   min_temp_var <- data_temp[,temp_var] %>% quantile(prob=0.025)
   max_temp_var <- data_temp[,temp_var] %>% quantile(prob=0.90)
 
+  #- create testing dataset -#
+  	#- for all the other variables, the values are set as their mean values -#
   temp_impact <- copy(X_eval_base) %>%
     setnames(var_name,'temp_var') %>%
     .[rep(1,1000),] %>%
     .[,temp_var:=seq(min_temp_var,max_temp_var,length=1000)] %>%
     setnames('temp_var',var_name) 
 
+  #- prediction -#
   tau_hat_set <- predict(cf_res, temp_impact, estimate.variance = TRUE)
 
+ 	#- data including tau_hat and se -#
   return_data <- copy(temp_impact) %>% 
     .[,tau_hat:=tau_hat_set$predictions] %>%
-    .[,tau_hat_se:=sqrt( tau_hat_set$variance.estimates )] %>%
+    .[,tau_hat_se:=sqrt(tau_hat_set$variance.estimates)] %>%
     .[,c('tau_hat','tau_hat_se',var_name),with=FALSE] %>%
     setnames(var_name,'value') %>%
     .[,type:='Treatment Effect (inches)'] %>%
@@ -106,6 +119,7 @@ get_impact <- function(cf_res,data_base,var_ls,var_name){
 # treat_var <- 'tgts'
 
 gen_impact_viz <- function(cf_res,data_base,treat_var,var_ls){
+	# cf_res= cf1; data_base=data_reg_case3; treat_var='treat2'; var_ls= cov_ls
 
   impact_data <- lapply(var_ls,function(x) get_impact(cf_res=cf_res,data_base=data_base,var_ls=var_ls,x)) %>%
     rbindlist() 
