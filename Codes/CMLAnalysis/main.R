@@ -13,13 +13,9 @@ library(reticulate)
 #- which python? -#
 py_config()
 
-# ==== python setup ==== #
-source_python(here("GitControlled/GW_het_allocation_impact/Codes/CMLAnalysis/setup.py"))
-
-
 
 #--- sourcing R.function ---#
-source(here('GitControlled/GW_het_allocation_impact/Codes/Functions/functions.R'))
+source(here('GitControlled/Codes/Functions/functions.R'))
 
 
 #--- import the data ---# (yearly data)
@@ -67,23 +63,37 @@ data_reg_case3 <- data_w_W1 %>%
 
 
 ###--- training dataset ---###
-Y <- data_reg_case3[,usage]
-X <- data_reg_case3[,cov_ls,with=FALSE]
-W <- data_reg_case3[,treat2]
+Y <- data_reg_case3[,usage] %>% 
+  as.array()
 
-Y_array <- Y %>% as.array() %>% unname()
-X_array <- X %>% as.matrix() %>% unname()
-W_array <- W %>% as.array() %>% unname()
+T <- data_reg_case3[,treat2] %>% 
+  as.array()
 
-
-###--- preparing testing dataset ---###
-
-
-
-
+X <- data_reg_case3[,cov_ls,with=FALSE] %>%
+  as.matrix() %>%
+  unname()
 
 #-- cluster: unique combinations of twnid,rngid, year --#
 cl <- data_reg_case3[,tr_year]
+
+
+
+
+# ==========================================================================
+# ORF
+# ==========================================================================
+
+
+from econml.orf import DMLOrthoForest, DROrthoForest
+from econml.dml import CausalForestDML
+from econml.sklearn_extensions.linear_model import WeightedLassoCVWrapper, WeightedLasso, WeightedLassoCV
+
+# Helper imports
+import numpy as np
+from itertools import product
+from sklearn.linear_model import Lasso, LassoCV, LogisticRegression, LogisticRegressionCV
+
+
 
 # ==========================================================================
 # Causal Forest of GRF

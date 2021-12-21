@@ -12,7 +12,7 @@
 <meta name="author" content="Shunkei Kakimoto" />
 
 
-<title>Run ORF</title>
+<title>Orthogonal Random Forest and Causal Forest: Use Cases and Examples</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -358,12 +358,34 @@ pre code {
 
 
 
-<h1 class="title toc-ignore">Run ORF</h1>
+<h1 class="title toc-ignore">Orthogonal Random Forest and Causal Forest: Use Cases and Examples</h1>
 <h4 class="author">Shunkei Kakimoto</h4>
 
 </div>
 
 
+<div id="question" class="section level2">
+<h2>Question</h2>
+<ul>
+<li>How to open R project from terminus?</li>
+</ul>
+</div>
+<div id="i-need-to-set-the-path-manually-instead-using-of-here" class="section level2">
+<h2>I need to set the path manually instead using of here()</h2>
+<ul>
+<li><strong>Problem</strong>: The path to the project <code>here()</code> should specify does not correct
+<ul>
+<li>It should be: <code>/Users/shunkeikakimoto/Dropbox/ResearchProject/HeterogeneousAllocation</code></li>
+<li>but, whenever I use <code>here()</code> on Rmarkdown, the path is set <code>/Users/shunkeikakimoto/Dropbox/ResearchProject/HeterogeneousAllocation/GitControlled/GW_het_allocation_impact</code></li>
+<li>I do not understand why. Maybe because of git?</li>
+</ul></li>
+</ul>
+<pre class="r"><code>here()</code></pre>
+<pre><code>## [1] &quot;/Users/shunkeikakimoto/Dropbox/ResearchProject/HeterogeneousAllocation/GitControlled/GW_het_allocation_impact&quot;</code></pre>
+<pre class="r"><code>use_python(&quot;/Users/shunkeikakimoto/Dropbox/ResearchProject/HeterogeneousAllocation/myenv/bin/python&quot;)
+use_virtualenv(&quot;/Users/shunkeikakimoto/Dropbox/ResearchProject/HeterogeneousAllocation/myenv/bin/activate_this.py&quot;)
+
+py_config()</code></pre>
 <pre><code>## python:         /Users/shunkeikakimoto/Dropbox/ResearchProject/HeterogeneousAllocation/myenv/bin/python
 ## libpython:      /Users/shunkeikakimoto/opt/anaconda3/lib/libpython3.9.dylib
 ## pythonhome:     /Users/shunkeikakimoto/Dropbox/ResearchProject/HeterogeneousAllocation/myenv:/Users/shunkeikakimoto/Dropbox/ResearchProject/HeterogeneousAllocation/myenv
@@ -378,8 +400,130 @@ pre code {
 ##  /usr/local/bin/python3
 ##  /usr/bin/python3
 ##  /usr/bin/python</code></pre>
-<div id="data" class="section level1">
-<h1>Data</h1>
+</div>
+<div id="setup" class="section level1">
+<h1>Setup</h1>
+<pre class="python"><code>import econml
+
+# Main imports
+from econml.orf import DMLOrthoForest, DROrthoForest</code></pre>
+<pre><code>## IPython could not be loaded!</code></pre>
+<pre class="python"><code>from econml.dml import CausalForestDML
+from econml.sklearn_extensions.linear_model import WeightedLassoCVWrapper, WeightedLasso, WeightedLassoCV
+
+# Helper imports
+import numpy as np
+from itertools import product
+from sklearn.linear_model import Lasso, LassoCV, LogisticRegression, LogisticRegressionCV
+import matplotlib.pyplot as plt
+
+# %matplotlib inline #this is not correct syntax for Python (?)</code></pre>
+</div>
+<div id="example-usage-with-continuous-treatment-synthetic-data" class="section level1">
+<h1>Example Usage with Continuous Treatment Synthetic Data</h1>
+<pre class="python"><code># Treatment effect function
+def exp_te(x):
+    return np.exp(2*x[0])</code></pre>
+<pre class="python"><code># DGP constants
+np.random.seed(123)
+n = 1000
+n_w = 30
+support_size = 5
+n_x = 1
+# Outcome support
+support_Y = np.random.choice(range(n_w), size=support_size, replace=False)
+coefs_Y = np.random.uniform(0, 1, size=support_size)
+epsilon_sample = lambda n: np.random.uniform(-1, 1, size=n)
+# Treatment support 
+support_T = support_Y
+coefs_T = np.random.uniform(0, 1, size=support_size)
+eta_sample = lambda n: np.random.uniform(-1, 1, size=n) 
+
+# Generate controls, covariates, treatments and outcomes
+W = np.random.normal(0, 1, size=(n, n_w))
+X = np.random.uniform(0, 1, size=(n, n_x))
+# Heterogeneous treatment effects
+TE = np.array([exp_te(x_i) for x_i in X])
+T = np.dot(W[:, support_T], coefs_T) + eta_sample(n)
+Y = TE * T + np.dot(W[:, support_Y], coefs_Y) + epsilon_sample(n)
+
+# ORF parameters and test data
+subsample_ratio = 0.3
+lambda_reg = np.sqrt(np.log(n_w) / (10 * subsample_ratio * n))
+X_test = np.array(list(product(np.arange(0, 1, 0.01), repeat=n_x)))</code></pre>
+<div id="train-estimator" class="section level2">
+<h2>Train Estimator</h2>
+<pre class="python"><code>est = DMLOrthoForest(
+    n_trees=1000, min_leaf_size=5,
+    max_depth=50, subsample_ratio=subsample_ratio,
+    model_T=Lasso(alpha=lambda_reg),
+    model_Y=Lasso(alpha=lambda_reg),
+    model_T_final=WeightedLasso(alpha=lambda_reg),
+    model_Y_final=WeightedLasso(alpha=lambda_reg),
+    global_residualization=False,
+    random_state=123)</code></pre>
+<pre class="python"><code>est.fit(Y, T, X=X, W=W, inference=&quot;blb&quot;)</code></pre>
+<pre><code>## &lt;econml.orf._ortho_forest.DMLOrthoForest object at 0x7fbf098582e0&gt;
+## 
+## [Parallel(n_jobs=-1)]: Using backend LokyBackend with 6 concurrent workers.
+## [Parallel(n_jobs=-1)]: Done  20 tasks      | elapsed:    3.8s
+## [Parallel(n_jobs=-1)]: Done 818 tasks      | elapsed:    5.9s
+## [Parallel(n_jobs=-1)]: Done 1000 out of 1000 | elapsed:    6.3s finished
+## [Parallel(n_jobs=-1)]: Using backend LokyBackend with 6 concurrent workers.
+## [Parallel(n_jobs=-1)]: Done  28 tasks      | elapsed:    0.1s
+## [Parallel(n_jobs=-1)]: Done 953 tasks      | elapsed:    2.6s
+## [Parallel(n_jobs=-1)]: Done 1000 out of 1000 | elapsed:    2.6s finished</code></pre>
+<pre class="python"><code># Calculate treatment effects
+treatment_effects = est.effect(X_test)</code></pre>
+<pre><code>## [Parallel(n_jobs=-1)]: Using backend LokyBackend with 6 concurrent workers.
+## [Parallel(n_jobs=-1)]: Done  20 tasks      | elapsed:    3.8s
+## [Parallel(n_jobs=-1)]: Done 100 out of 100 | elapsed:    4.6s finished</code></pre>
+<pre class="python"><code># Calculate default (95%) confidence intervals for the test data
+te_lower, te_upper = est.effect_interval(X_test)</code></pre>
+<pre><code>## [Parallel(n_jobs=-1)]: Using backend LokyBackend with 6 concurrent workers.
+## [Parallel(n_jobs=-1)]: Done  28 tasks      | elapsed:    1.5s
+## [Parallel(n_jobs=-1)]: Done 100 out of 100 | elapsed:    2.5s finished</code></pre>
+<pre class="python"><code>res = est.effect_inference(X_test)</code></pre>
+<pre><code>## [Parallel(n_jobs=-1)]: Using backend LokyBackend with 6 concurrent workers.
+## [Parallel(n_jobs=-1)]: Done  28 tasks      | elapsed:    1.5s
+## [Parallel(n_jobs=-1)]: Done 100 out of 100 | elapsed:    2.5s finished</code></pre>
+<pre class="python"><code>res.summary_frame().head()</code></pre>
+<pre><code>##    point_estimate  stderr  zstat  pvalue  ci_lower  ci_upper
+## X                                                           
+## 0           1.161   0.183  6.339     0.0     0.802     1.520
+## 1           1.171   0.177  6.628     0.0     0.825     1.518
+## 2           1.182   0.171  6.925     0.0     0.847     1.516
+## 3           1.192   0.165  7.228     0.0     0.869     1.515
+## 4           1.202   0.160  7.533     0.0     0.890     1.515</code></pre>
+<pre class="python"><code>res.population_summary()</code></pre>
+<table class="simpletable">
+<caption>Uncertainty of Mean Point Estimate</caption>
+<tr>
+  <th>mean_point</th> <th>stderr_mean</th> <th>zstat</th> <th>pvalue</th> <th>ci_mean_lower</th> <th>ci_mean_upper</th>
+</tr>
+<tr>
+     <td>3.179</td>      <td>0.287</td>    <td>11.06</td>   <td>0.0</td>      <td>2.616</td>         <td>3.742</td>    
+</tr>
+</table>
+<table class="simpletable">
+<caption>Distribution of Point Estimate</caption>
+<tr>
+  <th>std_point</th> <th>pct_point_lower</th> <th>pct_point_upper</th>
+</tr>
+<tr>
+    <td>1.715</td>        <td>1.187</td>           <td>6.276</td>     
+</tr>
+</table>
+<table class="simpletable">
+<caption>Total Variance of Point Estimate</caption>
+<tr>
+  <th>stderr_point</th> <th>ci_point_lower</th> <th>ci_point_upper</th>
+</tr>
+<tr>
+      <td>1.739</td>         <td>1.079</td>          <td>6.525</td>    
+</tr>
+</table><br /><br />Note: The stderr_mean is a conservative upper bound.
+</div>
 </div>
 
 

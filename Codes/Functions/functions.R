@@ -109,7 +109,7 @@ get_impact <- function(cf_res,data_base,var_ls,var_name){
     .[,tau_hat:=tau_hat_set$predictions] %>%
     .[,tau_hat_se:=sqrt(tau_hat_set$variance.estimates)] %>%
     .[,c('tau_hat','tau_hat_se',var_name),with=FALSE] %>%
-    setnames(var_name,'value') %>%
+    setnames(var_name,'value') %>% #value is a sequence of target variable for prediction
     .[,type:='Treatment Effect (inches)'] %>%
     .[,variable:=var_name] 
 
