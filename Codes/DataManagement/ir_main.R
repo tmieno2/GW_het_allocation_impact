@@ -7,7 +7,7 @@
 # Related R files that precedes:
 # 1. rrb_buffer_identify.R: 
 #		1.1 create buffers around the NRD borders
-#		1.2 identify whether wells are located within the created buffers
+#		1.2 identify whether wells are  cated within the created buffers
 # 2. ssurgo.R:
 #		2.1 donwload SSURGO data 
 #		2.2 identify which map unit each well falls within 

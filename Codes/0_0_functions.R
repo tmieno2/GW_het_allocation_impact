@@ -51,58 +51,57 @@ get_grid_MET <- function(var_name, year) {
 #' and summarise those values by each well-id and year
 
 
-get_values_gridMET <- function(var_name, year){
+get_values_gridMET <- function(var_name, year, summarize_method){
   # Ex) 
-  # var_name = "pet"; year = 2007
+  # var_name = "pr"; year = 2007; summarize_method = "sum"
 
   # /*===== read raster data ======*/
   file_name <- paste0(var_name, "_", year, ".nc")
   print(paste0("working on ", file_name))
   temp_gmet <- terra::rast(here(paste0("Shared/Data/gridMET-historical/",file_name)))
 
-  # /*===== get in-season days ======*/
+  # /*===== get in-season day ======*/
   # + days since "1900-01-01"
   start_day <- (ymd(paste0(year, "-04-01")) - ymd("1900-01-01")) %>% as.numeric
   end_day <- (ymd(paste0(year, "-09-30")) - ymd("1900-01-01")) %>% as.numeric
   
   ls_in_day <- seq(start_day, end_day) %>% as.character
 
-  # /*===== Extract in-season daily weather values for site-level data (well)  ======*/
+  # /*===== Extract to point data   ======*/
   temp_res <- terra::extract(temp_gmet, vect(unique_well_sf)) %>%
     data.table() %>%
     # --- select only data for in-season days --- #
     setnames(names(.)[-1], gsub(".*=", "", names(.)[-1])) %>%
     .[,c("ID", ls_in_day), with=FALSE]
 
- 
-  res_return <- temp_res %>%
-    melt(id.vars = "ID", variable.name = "day") %>%
+  if(summarize_method == "sum"){
+    res_return <- temp_res %>%
+      melt(id.vars = "ID") %>%
+      .[,.(value = sum(value)), by=ID]
+
+  } else if (summarize_method == "mean") {
+    res_return <- temp_res %>% 
+      melt(id.vars = "ID") %>%
+      .[,.(value = mean(value)), by=ID]
+  }
+
+  res_report <- res_return %>%
     .[,`:=`(
-      varibale = var_name,
-      year = year
-      )]
+          year = year,
+          varibale = paste0(var_name, "_in")
+        )]
 
-  return(res_return)
+  return(res_report)
 }
 
 
-# /*=================================================*/
-#' # GDD calculation
-# /*=================================================*/
-# tmmx = 80
-# tmmn = 56
-# base_temp = 50
+# x=3
+# test <- get_values_gridMET(
+#     var_name = all_par_data[x,var_name],
+#     year = all_par_data[x,year],
+#     summarize_method = all_par_data[x,summarize_method]
+#     )
 
-get_gdd <- function(tmmx, tmmn, base_temp) {
-  
-  # /*===== check =====*/
-  tmmx <- pmin(tmmx, 86)
-  tmmn <- pmax(tmmn, 50)
-  # /*===== GDD calculation  =====*/
-  gdd <- pmax((tmmx+tmmn)/2-50, 0)
-
-  return(gdd)
-}
 
 
 # /*=================================================*/
@@ -128,15 +127,14 @@ get_ssurgo_props <- function(field, vars, summarize = FALSE) {
     # )
 
   # Get soil properties for each mukey
-  mukeydata <- 
+  mukeydata <-
     get_SDA_property(
       property = vars,
       method = "Weighted Average",
       mukeys = ssurgo_geom$mukey,
       top_depth = 0,
       bottom_depth = 150
-    ) %>%
-    data.table()
+    )
 
   ssurgo_data <- left_join(ssurgo_geom, mukeydata, by = "mukey")
   

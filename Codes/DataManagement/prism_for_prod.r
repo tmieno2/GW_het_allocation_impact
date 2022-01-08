@@ -6,22 +6,23 @@
 #===================================
 # Preparation
 #===================================
-setwd('~/Dropbox/CollaborativeResearch/AllocationImpacts')
-source('~/Dropbox/R_libraries_load/library.R')
+# setwd('~/Dropbox/CollaborativeResearch/AllocationImpacts')
+# source('~/Dropbox/R_libraries_load/library.R')
+library(here)
 library(prism)
 
 #--------------------------
 # Import datasets
 #--------------------------
 #--- Section data ---#
-RRB_sec <- readRDS('./Data/Geographic/RRB_sec.rds') 
+RRB_sec <- readRDS(here('Shared/Data/Geographic/RRB_sec.rds')) 
 
 RRB_sec@data <- RRB_sec@data %>% 
 	mutate(plss=paste(twnshp,twsp_SN,rng,rng_WE,section_,sep='')) %>% 
 	data.table()
 
 #--- Registration data ---#
-rgs <- readRDS(,file='~/Dropbox/MyResearch/GW_strategic/Data/registration.rds')
+rgs <- readRDS('~/Dropbox/MyResearch/GW_strategic/Data/registration.rds')
 
 #--- template prism data ---#
 # weather <- readGDAL('/Volumes/data_storage/Data/PRISM_ppt_stable_4kmD2_20070401_bil/PRISM_ppt_stable_4kmD2_20070401_bil.bil')

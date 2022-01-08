@@ -14,6 +14,7 @@ library(data.table)
 library(tidyverse)
 library(grf)
 library(plm)
+
 source(here('GitControlled/Codes/Functions/functions.R'))
 
 
@@ -51,6 +52,10 @@ data_w_W1 <- ir_data %>%
 		mean_tmin=mean(tmin_in),
 		mean_tmax=mean(tmax_in)
 	),by=wellid]
+
+# saveRDS(data_w_W1, here("Shared/Data/WaterAnalysis/data_w_LR_TB.rds"))
+
+unique(data_w_W1$year) %>% sort()
 
 
 #--- data exploration ---#
