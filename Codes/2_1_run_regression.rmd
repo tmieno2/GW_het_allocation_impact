@@ -1,0 +1,405 @@
+---
+title: "Run EconML on the New Data"
+author: "Shunkei Kakimoto"
+output:
+  html_document:
+    number_sections: yes
+    theme: cerulean
+    toc_float: yes
+    toc: yes
+    toc_depth: 3
+geometry: margin=1in
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_knit$set(root.dir = "~/Dropbox/ResearchProject/HeterogeneousAllocation")
+
+# library(here)
+# opts_knit$set(root.dir = here())
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  cache = FALSE,
+  comment = NA,
+  message = FALSE,
+  warning = FALSE,
+  tidy = FALSE,
+  cache.lazy = FALSE,
+  #--- figure ---#
+  dpi = 400,
+  fig.width = 7.5,
+  fig.height = 5,
+  out.width = "750px",
+  out.height = "500px"
+)
+
+# /*===== Basic Packages  =====*/
+# /*---- Data Wrangling ----*/
+library(data.table)
+library(tidyverse)
+library(DescTools)
+library(maps)
+
+# /*---- Visualization ----*/
+library(RColorBrewer)
+library(patchwork)
+library(ggplot2)
+library(ggthemes)
+library(ggpubr)
+library(viridis)
+library(grid)
+library(gridExtra)
+library(GGally)
+
+# /*---- Model Summary ----*/
+library(stats)
+library(modelsummary)
+library(flextable)
+library(officer)
+library(officedown)
+
+```		
+
+# Objective
+
++ Apply *Double Machine Learning(DML) ORF* and *Doubly Robust(DR) ORF* to the newly created dataset.
+
+
+# Preparation
+
+```{r}
+# --- load packages  --- #
+source("./GitControlled/Codes/0_1_ls_packages.R")
+
+# --- load functions --- #
+source("./GitControlled/Codes/0_0_functions.R")
+# source_python("./GitControlled/Codes/0_0_functions.py")
+```
+
+## Python setting
+
+```{r}
+#--- reticulate ---#
+use_python("./myenv/bin/python")
+use_virtualenv("./myenv/bin/activate_this.py")
+
+# repl_python()
+```
+
+```{python}
+## Ignore warnings
+import warnings
+warnings.filterwarnings("ignore")
+
+from econml.orf import DMLOrthoForest, DROrthoForest
+from econml.dml import CausalForestDML
+from econml.sklearn_extensions.linear_model import WeightedLassoCVWrapper, WeightedLasso, WeightedLassoCV
+
+# Helper imports
+import numpy as np
+import pandas as pd
+from itertools import product
+from sklearn.linear_model import Lasso, LassoCV, LogisticRegression, LogisticRegressionCV
+```
+
+## Loading data
+
+```{r}
+# /*===== load packages =====*/
+source("./GitControlled/Codes/0_1_ls_packages.R")
+
+# /*===== load data =====*/
+reg_data <- readRDS("./Shared/Data/WaterAnalysis/comp_reg_dt.rds") %>%
+	.[usage <= 40,]
+
+reg_agg_data <- readRDS("./Shared/Data/WaterAnalysis/agg_comp_reg_dt.rds")
+
+# repl_python()
+```
+
++ For aggregated data:
+	* `pr_in = sum(pr)`,
+    * `tmmn_in = mean(tmmn)`,
+    * `tmmx_in = mean(tmmx)`,
+    * `pet_in = sum(pet)`,
+    * `gdd_in = sum(gdd)`,
+
+# Run EconML on site-level data
+
+```{r}
+# /*=================================================*/
+#' # Preparation
+# /*=================================================*/
+
+# /*===== variables to be included in regression =====*/
+cov_ls <- c(
+	# --- weather --- #
+	'pr_in',
+	'tmmn_in',
+	'tmmx_in',
+	'gdd_in',
+	# --- soil --- #
+  	'silttotal_r',
+  	'claytotal_r',
+  	'slope_r',
+  	'ksat_r',
+  	'awc_r'
+  	)
+
+all_vars <- c(cov_ls,'usage','treat2', 'tr', 'year')
+
+#--- set target variable ---#
+target_var <- "pr_in"
+
+#### ==== Training data ==== ####
+Y <- reg_data[,usage] %>% 
+  as.array()
+
+T <- reg_data[,treat2] %>% 
+  as.array()
+
+X_train <- reg_data[,cov_ls,with=FALSE] %>%
+  as.matrix() %>%
+  unname()
+
+# /*===== Testing data =====*/
+min_temp <- reg_data[[target_var]] %>% quantile(prob=0.025)
+max_temp <- reg_data[[target_var]] %>% quantile(prob=0.90)
+
+X_eval_base <- data.table::copy(reg_data)[,cov_ls,with=FALSE] %>%
+  as_tibble(.) %>% 
+  summarize_all(mean) %>%
+  data.table()
+
+X_eval <- data.table::copy(X_eval_base) %>%
+  setnames(target_var,'temp_var') %>%
+  .[rep(1,1000),] %>%
+  .[,temp_var:=seq(min_temp,max_temp,length=1000)] %>%
+  setnames('temp_var',target_var) %>%
+  # reoder columns
+  .[,..cov_ls] %>%
+  as.matrix() %>%
+  unname()
+```
+
+## DROrthoForest (Doubly Robust ORF)
+
+```{python}
+# Define some parameters
+n_trees = 1000
+min_leaf_size = 50
+max_depth = 20
+subsample_ratio = 0.5
+
+dr_orf_est = DROrthoForest(
+    n_trees = n_trees, 
+    min_leaf_size = min_leaf_size,
+    max_depth = max_depth, 
+    subsample_ratio = subsample_ratio
+)
+
+#--- Build an ORF from a training set ---#
+dr_orf_est.fit(r.Y, r.T, X=r.X_train)
+
+#--- Calculate the heterogeneous treatment effect ---#
+dr_orf_te_pred = dr_orf_est.effect(X = r.X_eval)
+
+#--- Calculate default (95%) confidence intervals for the default treatment points T0=0 and T1=1 ---#
+dr_orf_te_lower, dr_orf_te_upper = dr_orf_est.effect_interval(r.X_eval)
+
+```
+
+```{r}
+dr_orf_cate_effect <- 
+	data.table(
+		"value" = X_eval[,1], 
+		"tau_hat" = py$dr_orf_te_pred
+	) %>%
+   .[,`:=`(
+   		te_pred_down = py$dr_orf_te_lower,
+    	te_pred_up   = py$dr_orf_te_upper
+   	)] %>%
+   .[, method:="DR_ORF"]
+```
+
+## DMLOrthoForest (Double Machine Learning ORF)
+
+```{python}
+dml_orf_est = DMLOrthoForest(
+        n_trees = n_trees, 
+        min_leaf_size = min_leaf_size, 
+        max_depth = max_depth, 
+        subsample_ratio = subsample_ratio
+       )
+
+
+#--- Build an ORF from a training set ---#
+dml_orf_est.fit(r.Y, r.T, X=r.X_train)
+
+#--- Calculate the heterogeneous treatment effect ---#
+dml_orf_te_pred = dml_orf_est.effect(X = r.X_eval)
+
+#--- Calculate default (95%) confidence intervals for the default treatment points T0=0 and T1=1 ---#
+dml_orf_te_lower, dml_orf_te_upper = dml_orf_est.effect_interval(r.X_eval)
+```
+
+
+```{r}
+dml_orf_cate_effect <- 
+	data.table(
+		"value" = X_eval[,1], 
+		"tau_hat" = py$dml_orf_te_pred
+	) %>%
+   .[,`:=`(
+   		te_pred_down = py$dml_orf_te_lower,
+    	te_pred_up   = py$dml_orf_te_upper
+   	)] %>%
+   .[, method:="DML_ORF"]
+```
+
+## Visualization
+
+```{r, fig.width=12, fig.height=6}
+report <- bind_rows(dr_orf_cate_effect, dml_orf_cate_effect)
+
+ggplot(report)+
+  geom_ribbon(aes(
+      ymin = te_pred_down, 
+      ymax = te_pred_up,
+      x = value), fill = "grey70") +
+  geom_line(aes(value, tau_hat)) +
+  facet_grid(~method) +
+  labs(
+    x = target_var,
+    y = "Treatment Effects"
+  ) 
+```
+
++ Almost the same trend as we saw in the results based on the old data. 
+
+
+# Run EconML on the aggregated data
+
++ aggregate **2008-2012** data so that each well have one observation for that period with mean precip and other weather variables, total water use.
+
+## Preparation
+```{r}
+#### ==== Training data ==== ####
+Y_agg <- reg_agg_data[,usage] %>% 
+  as.array()
+
+T_agg <- reg_agg_data[,treat2] %>% 
+  as.array()
+
+X_train_agg <- reg_agg_data[,cov_ls,with=FALSE] %>%
+  as.matrix() %>%
+  unname()
+
+# /*===== Testing data =====*/
+min_temp <- reg_agg_data[[target_var]] %>% quantile(prob=0.025)
+max_temp <- reg_agg_data[[target_var]] %>% quantile(prob=0.90)
+
+X_eval_agg_base <- data.table::copy(reg_agg_data)[,cov_ls,with=FALSE] %>%
+  as_tibble(.) %>% 
+  summarize_all(mean) %>%
+  data.table()
+
+X_eval_agg <- data.table::copy(X_eval_agg_base) %>%
+  setnames(target_var,'temp_var') %>%
+  .[rep(1,1000),] %>%
+  .[,temp_var:=seq(min_temp, max_temp,length=1000)] %>%
+  setnames('temp_var',target_var) %>%
+  # reoder columns
+  .[,..cov_ls] %>%
+  as.matrix() %>%
+  unname()
+
+```
+
+## Run EconML
+
+```{r}
+# /*===== DR-ORF =====*/
+res_dr_orf_agg <- run_dr_orf(
+	y = Y_agg,
+	t = T_agg,
+	x = X_train_agg,
+	x_eval = X_eval_agg
+	) %>%
+	data.table() %>%
+	.[,`:=`(
+		value =  X_eval_agg[,1],
+		method = "DR_ORF"
+		)]
+
+ggplot(res_dr_orf)+
+  geom_ribbon(aes(
+      ymin = te_lower, 
+      ymax = te_upper,
+      x = value), fill = "grey70") +
+  geom_line(aes(value, te_pred)) +
+  facet_grid(~method) +
+  labs(
+    x = target_var,
+    y = "Treatment Effects"
+  ) 
+
+# /*===== DML-ORF =====*/
+res_dml_orf_agg <- run_dml_orf(
+	y = Y_agg,
+	t = T_agg,
+	x = X_train_agg,
+	x_eval = X_eval_agg
+	) %>%
+	data.table() %>%
+	.[,`:=`(
+		value =  X_eval_agg[,1],
+		method = "DML_ORF"
+		)]
+
+report_agg <- bind_rows(res_dr_orf_agg, res_dml_orf_agg)
+
+ggplot(report_agg)+
+  geom_ribbon(aes(
+      ymin = te_lower, 
+      ymax = te_upper,
+      x = value), fill = "grey70") +
+  geom_line(aes(value, te_pred)) +
+  facet_grid(~method) +
+  labs(
+    x = target_var,
+    y = "Treatment Effects"
+  ) 
+```
+
++ The results appear to contradict the previous results
+	* as precipitation increases, the treatment works strongly
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

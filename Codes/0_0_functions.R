@@ -51,56 +51,38 @@ get_grid_MET <- function(var_name, year) {
 #' and summarise those values by each well-id and year
 
 
-get_values_gridMET <- function(var_name, year, summarize_method){
+get_in_values_gridMET <- function(var_name, year){
   # Ex) 
-  # var_name = "pr"; year = 2007; summarize_method = "sum"
+  # var_name = "pet"; year = 2007
 
   # /*===== read raster data ======*/
   file_name <- paste0(var_name, "_", year, ".nc")
   print(paste0("working on ", file_name))
   temp_gmet <- terra::rast(here(paste0("Shared/Data/gridMET-historical/",file_name)))
 
-  # /*===== get in-season day ======*/
+  # /*===== get in-season days ======*/
   # + days since "1900-01-01"
   start_day <- (ymd(paste0(year, "-04-01")) - ymd("1900-01-01")) %>% as.numeric
-  end_day <- (ymd(paste0(year, "-09-30")) - ymd("1900-01-01")) %>% as.numeric
-  
+  end_day <- (ymd(paste0(year, "-09-30")) - ymd("1900-01-01")) %>% as.numeric 
+
   ls_in_day <- seq(start_day, end_day) %>% as.character
 
-  # /*===== Extract to point data   ======*/
+  # /*===== Extract in-season daily weather values for site-level data (well)  ======*/
   temp_res <- terra::extract(temp_gmet, vect(unique_well_sf)) %>%
     data.table() %>%
     # --- select only data for in-season days --- #
     setnames(names(.)[-1], gsub(".*=", "", names(.)[-1])) %>%
     .[,c("ID", ls_in_day), with=FALSE]
-
-  if(summarize_method == "sum"){
-    res_return <- temp_res %>%
-      melt(id.vars = "ID") %>%
-      .[,.(value = sum(value)), by=ID]
-
-  } else if (summarize_method == "mean") {
-    res_return <- temp_res %>% 
-      melt(id.vars = "ID") %>%
-      .[,.(value = mean(value)), by=ID]
-  }
-
-  res_report <- res_return %>%
+ 
+  res_return <- temp_res %>%
+    melt(id.vars = "ID", variable.name = "day") %>%
     .[,`:=`(
-          year = year,
-          varibale = paste0(var_name, "_in")
-        )]
+      varibale = var_name,
+      year = year
+      )]
 
-  return(res_report)
+  return(res_return)
 }
-
-
-# x=3
-# test <- get_values_gridMET(
-#     var_name = all_par_data[x,var_name],
-#     year = all_par_data[x,year],
-#     summarize_method = all_par_data[x,summarize_method]
-#     )
 
 
 
@@ -111,7 +93,8 @@ get_values_gridMET <- function(var_name, year, summarize_method){
 
 
 get_ssurgo_props <- function(field, vars, summarize = FALSE) {
-  # field=unique_well_sp; vars = c("sandtotal_r", "claytotal_r")
+  # field= as(well_buffer_sf[5,], "Spatial")
+  # vars = soil_var
   # Get SSURGO mukeys for polygon intersection
   ssurgo_geom <-
     SDA_spatialQuery(
@@ -120,11 +103,17 @@ get_ssurgo_props <- function(field, vars, summarize = FALSE) {
       db = "SSURGO",
       geomIntersection = TRUE
     ) %>%
-    st_as_sf()
-    # mutate(
-    #   area = as.numeric(st_area(.)),
-    #   area_weight = area / sum(area)
-    # )
+    st_as_sf()%>%
+    dplyr::mutate(
+      area = as.numeric(st_area(.)),
+      area_weight = area / sum(area)
+    )
+
+  # --- check --- #
+  # ggplot()+geom_sf(data=ssurgo_geom, color="blue")
+  # Looks like, in one buffer (surrounding a well), there are multiple polygon data where each of them are 
+  # associated with unique mukey 
+  # `area_weight` indicates a portion of each polygon to entire butter
 
   # Get soil properties for each mukey
   mukeydata <-

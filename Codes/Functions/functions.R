@@ -51,7 +51,7 @@ get_grid_MET <- function(var_name, year) {
 #' and summarise those values by each well-id and year
 
 
-get_values_gridMET <- function(var_name, year){
+get_in_values_gridMET <- function(var_name, year){
   # Ex) 
   # var_name = "pet"; year = 2007
 
@@ -63,8 +63,8 @@ get_values_gridMET <- function(var_name, year){
   # /*===== get in-season days ======*/
   # + days since "1900-01-01"
   start_day <- (ymd(paste0(year, "-04-01")) - ymd("1900-01-01")) %>% as.numeric
-  end_day <- (ymd(paste0(year, "-09-30")) - ymd("1900-01-01")) %>% as.numeric
-  
+  end_day <- (ymd(paste0(year, "-09-30")) - ymd("1900-01-01")) %>% as.numeric 
+
   ls_in_day <- seq(start_day, end_day) %>% as.character
 
   # /*===== Extract in-season daily weather values for site-level data (well)  ======*/
@@ -73,7 +73,6 @@ get_values_gridMET <- function(var_name, year){
     # --- select only data for in-season days --- #
     setnames(names(.)[-1], gsub(".*=", "", names(.)[-1])) %>%
     .[,c("ID", ls_in_day), with=FALSE]
-
  
   res_return <- temp_res %>%
     melt(id.vars = "ID", variable.name = "day") %>%

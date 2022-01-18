@@ -11,9 +11,10 @@
 
 
 
-# /*===== Preparation =====*/
+# /*=================================================*/
+#' # Preparation
+# /*=================================================*/
 library(here)
-
 # --- load packages  --- #
 source(here("GitControlled/Codes/0_1_ls_packages.R"))
 
@@ -21,50 +22,27 @@ source(here("GitControlled/Codes/0_1_ls_packages.R"))
 source(here("GitControlled/Codes/0_0_functions.R"))
 
 
-#/*----------------------------------*/
-#' ## Load data
-#/*----------------------------------*/
 # /*===== original regression data =====*/
 data_w_LR_TB <- readRDS(here("Shared/Data/WaterAnalysis/data_w_LR_TB.rds"))
 
-unique_well_sf <- data_w_LR_TB %>%
-  unique(.,by="wellid") %>%
-  .[,.(wellid, longdd, latdd)] %>%
-  # --- the geographic coordinate in the well data is NAD83 (espg=4269)--- #
-  st_as_sf(., coords = c("longdd","latdd"), crs = 4269)
-
-
-target_crs <- st_crs(unique_well_sf)
-
 
 # /*===== weather and soil data =====*/
-res_gmet_dt <- readRDS(here("Shared/Data/WaterAnalysis/gridMET_ready.rds"))
+gmet_dt <- readRDS(here("Shared/Data/WaterAnalysis/gridMET_ready.rds"))
 
-res_ssurgo_sf <- readRDS(here("Shared/Data/WaterAnalysis/ssurgo_ready.rds")) %>%
-	st_transform(crs=target_crs)
+ssurgo_dt <- readRDS(here("Shared/Data/WaterAnalysis/ssurgo_ready.rds"))
+
+gmet_ssurgo_dt <- ssurgo_dt[gmet_dt, on = "wellid"]
 
 
 # /*=================================================*/
-#' # Organizing data
+#' # Create new regression data
 # /*=================================================*/
 
-#/*----------------------------------*/
-#' ## compile ssurgo data and gridMET data
-#/*----------------------------------*/
-# /*===== mach well location with ssurgo data =====*/
-well_ssurgo_sf <- st_join(unique_well_sf, res_ssurgo_sf)
-
-# /*===== merge weather data =====*/
-well_ssurgo_gmet_dt <- left_join(well_ssurgo_sf, res_gmet_dt, by="wellid") %>%
-	data.table()
-
-
-#/*----------------------------------*/
-#' ## create new regression data
-#/*----------------------------------*/
 # /*===== substruct data to update some columns=====*/
+
 var_ls <- c(
 	"wellid",
+	"nrdname",
 	"year",
 	"trs", # index for clustering,  
 	"tr", # index for clustering, 
@@ -74,37 +52,34 @@ var_ls <- c(
 	"usage" # dependent variable
 	)
 
-# /*---- test ----*/
-lapply(var_ls, function(x){any(is.na(data_w_LR_TB[[x]]))})
+# /*---- check ----*/
+# lapply(var_ls, function(x){any(is.na(data_w_LR_TB[[x]]))})
 # So, this means that for some wells in some years, "usage" is missing
 
 # --- for example --- #
-data_w_LR_TB[wellid==709,..var_ls]
-well_ssurgo_gmet_dt[wellid==709]
+# data_w_LR_TB[wellid==709,..var_ls]
+# well_ssurgo_gmet_dt[wellid==709]
 
-# /*----------*/
+# /*-------- end ---------*/
 
-
-sub_data_w_LR_TB <- data_w_LR_TB[, ..var_ls] %>%
+sub_data_w_LR_TB <- data_w_LR_TB [usage <= 100, ..var_ls] %>%
 	na.omit()
 
 
 # /*===== merge source data with weather and soil data =====*/
 # + well_ssurgo_gmet_dt has NA 
-comp_reg_dt <- well_ssurgo_gmet_dt[sub_data_w_LR_TB, on=c("year", "wellid")] %>%
+comp_reg_dt <- gmet_ssurgo_dt[sub_data_w_LR_TB, on=c("year", "wellid")] %>%
 	na.omit()
 
 saveRDS(comp_reg_dt, here("Shared/Data/WaterAnalysis/comp_reg_dt.rds"))
 
 
-
 #/*----------------------------------*/
-#' ## aggregated data (data only for 2008-2012)
+#' ## aggregated data by years
 #/*----------------------------------*/
-
 
 agg_comp_reg_dt <- comp_reg_dt %>%
-  .[year %in% 2008:2012 & usage <= 40,] %>%
+  .[year %in% 2008:2012 & usage <= 100,] %>%
   .[,`:=`(
     sum_usage = sum(usage),
     pr_in = sum(pr_in),
@@ -113,6 +88,10 @@ agg_comp_reg_dt <- comp_reg_dt %>%
     sum_gdd = sum(gdd_in)
   ),by=wellid] %>%
   unique(., by="wellid")
+
+# summary(agg_comp_reg_dt[["usage"]])
+# length(unique(agg_comp_reg_dt[,wellid]))
+
 
 saveRDS(agg_comp_reg_dt, here("Shared/Data/WaterAnalysis/agg_comp_reg_dt.rds"))
 

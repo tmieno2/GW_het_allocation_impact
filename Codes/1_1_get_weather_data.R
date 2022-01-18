@@ -113,7 +113,7 @@ unique_well_sf <- st_transform(unique_well_sf, gmet_crs)
 
 # /*===== get in-season daily weather data =====*/
 daily_gmet <- lapply(seq_len(nrow(par_data)),
-  function(x) get_values_gridMET(
+  function(x) get_in_values_gridMET(
     var_name = all_par_data[x,var_name],
     year = all_par_data[x,year]
     )
@@ -126,7 +126,7 @@ res_daily_gmet <- daily_gmet %>%
   .[,`:=` (
   # --- pr: mm to inch--- #
     pr = pr * 0.0393701,
-    # --- tmmn, tmmx: K to C--- #
+    # --- tmmn, tmmx: K to C --- #
     # tmmn = (tmmn - 273.15)*9/5 + 32, #(to F)
     # tmmx = (tmmx - 273.15)*9/5 + 32, #(to F)
     tmmn = tmmn - 273.15, #(to C)

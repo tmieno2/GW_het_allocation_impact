@@ -14,6 +14,8 @@
 "tmmn":  Minimum Near-Surface Air Temperature (Kelvin)
 "tmmx":  Maximum Near-Surface Air Temperature (Kelvin)
 "pet" : Reference grass evaportranspiration (mm)
+	+ potential evapotranspiration
+		*  the amount of evaporation that would occur if a sufficient water source were available
 
 + gridMET data is also available in the Google Earth Engine Data Catalog, which can be accessed with the R library *rgee*
 
@@ -48,7 +50,8 @@ Get new
 
 # SSURGO data
 + "The SSURGO database contains information about soil as collected by the National Cooperative Soil Survey over the course of a century."
-+ helpful website:
+
++ *helpful website*:
 	* https://ncss-tech.github.io/AQP/soilDB/SDA-tutorial.html
 	* https://palderman.github.io/DataSciAg/exercises/R-SSURGO-data-download/
 
@@ -67,15 +70,12 @@ Get new
 	* see  
 		- https://sdmdataaccess.sc.egov.usda.gov/documents/TablesAndColumnsReport.pdf
 		- https://www.nrcs.usda.gov/wps/portal/nrcs/detail/soils/survey/geo/?cid=nrcs142p2_053631
+
 + `method`: 
 	* see
 		- https://github.com/ncss-tech/ssurgoOnDemand
 	* *"Dominant Component"* returns the attribute value associated with the component with the highest percent composition in the map unit. If more than one component shares the highest percent composition, the value of the first named component is returned.
 	* *"Weighted Average"* computes a weighted average value for all components in the map unit. Percent composition is the weighting factor. The result returned by this aggregation method represents a weighted average value of the corresponding attribute throughout the map unit.
-
-
-
-
 
 
 + `mukey`: mapunit key, unique nationally
