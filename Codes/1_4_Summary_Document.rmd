@@ -119,7 +119,9 @@ library(officedown)
 ## Process
 + make buffer (400 m radius circles around well, which covers about 50 ha of land) for each well 
 
-```{r, eval = FALSE}
+```{r}
+source("./GitControlled/Codes/0_1_ls_packages.R")
+source("./GitControlled/Codes/0_0_functions.R")
 # /*===== point data for well location =====*/
 data_w_LR_TB <- readRDS("./Shared/Data/WaterAnalysis/data_w_LR_TB.rds")
 
@@ -138,9 +140,10 @@ well_buffer_sf <- well_sf %>%
   # 400 m radius circles around well, which covers about 50 ha of land
   st_buffer(., dist = 400)
  
-# ggplot()+
-#   geom_sf(data=well_sf, size=0.5) +
-#   geom_sf(data=well_buffer_sf, color="red", fill=NA)
+ggplot()+
+  geom_sf(data=well_sf, size=0.5) +
+  geom_sf(data=well_buffer_sf, color="red", fill=NA)
+
 
 well_buffer_sp <- as(well_buffer_sf, "Spatial")
 ```
@@ -189,6 +192,35 @@ get_ssurgo_props <- function(field, vars, summarize = FALSE) {
     return(ssurgo_data)
   }
 }
+```
+
+### Example: SSURGO polygon data for an example field
+
+```{r}
+library(soilDB)
+library(aqp)
+library(sp)
+
+ex_well_bf <- well_buffer_sf[5,]
+ex_well_bf_sp <- as(ex_well_bf, "Spatial")
+
+ssurgo_geom <-
+    SDA_spatialQuery(
+      geom = ex_well_bf_sp,
+      what = "geom",
+      db = "SSURGO",
+      geomIntersection = TRUE
+    ) %>%
+    st_as_sf()%>%
+    dplyr::mutate(
+      area = as.numeric(st_area(.)),
+      area_weight = area / sum(area)
+    )
+
+# /*===== visualization =====*/
+ggplot()+
+  geom_sf(data=ssurgo_geom, aes(fill=factor(mukey)), color="blue", alpha=0.5)+
+  geom_sf(data= well_sf[5,], fill=NA)
 ```
 
 

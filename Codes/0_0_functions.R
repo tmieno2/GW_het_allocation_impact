@@ -6,7 +6,9 @@
 
 
 
-
+# ==========================================================================
+# #### ==== Data Management ==== ####
+# ==========================================================================
 
 #/*=================================================*/
 #' # Download and process gridMET data
@@ -142,6 +144,9 @@ get_ssurgo_props <- function(field, vars, summarize = FALSE) {
 }
 
 
+# ==========================================================================
+# #### ==== Data Analysis ==== ####
+# ==========================================================================
 
 #/*=================================================*/
 #' # Prepare a data set for prediction (ir share)
@@ -150,31 +155,60 @@ get_ssurgo_props <- function(field, vars, summarize = FALSE) {
 # data <-temp$share_data[[1]]
 # vars <- c("balance_avg", "days_ab_35_avg")
 
-gen_pred_data_is <- function(data, vars) {
 
-  var_1 <- vars[1]
-  var_2 <- vars[2]
+# gen_pred_data_is <- function(data, vars) {
 
-  return_data <- 
-    expand.grid(
-      var_1 = quantile(data[, ..var_1] %>% unlist, prob = c(0.05, 0.5, 0.95)),
-      var_2 = quantile(data[, ..var_2] %>% unlist, prob = c(0.05, 0.5, 0.95)),
-      sat = 
-        seq(
-          min(data[, sat], na.rm = TRUE),
-          max(data[, sat], na.rm = TRUE),
-          length = 50
-        )
-    ) %>% 
-    data.table() %>% 
-    setnames(
-      c("var_1", "var_2"), 
-      vars
-    )
+#   var_1 <- vars[1]
+#   var_2 <- vars[2]
 
-  return(return_data)
+#   return_data <- 
+#     expand.grid(
+#       var_1 = quantile(data[, ..var_1] %>% unlist, prob = c(0.05, 0.5, 0.95)),
+#       var_2 = quantile(data[, ..var_2] %>% unlist, prob = c(0.05, 0.5, 0.95)),
+#       sat = 
+#         seq(
+#           min(data[, sat], na.rm = TRUE),
+#           max(data[, sat], na.rm = TRUE),
+#           length = 50
+#         )
+#     ) %>% 
+#     data.table() %>% 
+#     setnames(
+#       c("var_1", "var_2"), 
+#       vars
+#     )
 
+#   return(return_data)
+
+# }
+
+gen_pred_data <- function(reg_data, cov_ls, target_var){
+  # data = reg_data_fe
+  # cov_ls = het_vars
+  # target_var = "pr_in"
+
+  X_test_base <- reg_data[,cov_ls, with=FALSE] %>%
+  as_tibble(.) %>% 
+  summarize_all(mean) %>%
+  data.table()
+
+  target_range <- quantile(reg_data[[target_var]], prob = c(0.05, 0.95)) 
+
+  X_test <- X_test_base %>%
+    setnames(target_var,'temp_var') %>%
+    .[rep(1,1000),] %>%
+    .[,temp_var:=seq(min(target_range), max(target_range), length=1000)] %>%
+    setnames('temp_var',target_var) %>%
+    .[,target_var := target_var]
+
+  return(X_test)
 }
+
+
+# X_test_comp <- lapply(c("pr_in", "gdd_in"), function(x) gen_pred_data(reg_data, cov_ls, x)) %>%
+#   bind_rows()
+
+
 
 #/*=================================================*/
 #' # Prepare a data set for prediction (total impact)
@@ -238,21 +272,22 @@ gen_pred_data_total <- function(data, vars, data_avg, vars_avg, sat_ls) {
 #  Visualize CF results
 #===================================
 #' Description
-#' + get_impact(): Calculate the HTE (prediction) for a specific variables
-#' + gen_impact_viz(): run get_impact() for all the variables and visualize 
+#' + get_impact(): Calculate the HTE (prediction) for a specific variable
+#' + gen_impact_viz(): run get_impact() for all the variables and visualize the results
 
-get_impact <- function(cf_res,data_base,var_ls,var_name){
-	# cf_res= cf1; data_base=data_reg_case3; treat_var='treat2'; var_ls= cov_ls
+get_impact <- function(cf_res, data_base, var_ls, var_name){
+	# cf_res= res_cf; data_base=reg_data_fe; treat_var='treat2'
+  # var_ls_int = cov_ls
 	# var_name = var_ls[[1]]
 
 	#- make summary table -#
-  X_eval_base <- copy(data_base)[,var_ls,with=FALSE] %>%
+  X_eval_base <- data.table::copy(data_base)[,var_ls,with=FALSE] %>%
     as_tibble(.) %>% 
     summarize_all(mean) %>%
     data.table()
 
   #- change the name of a target variable to `temp_var` -#
-  data_temp <- copy(data_base) %>%
+  data_temp <- data.table::copy(data_base) %>%
     setnames(var_name,'temp_var')
 
   #- define the range of `temp_var` values used for prediction -#
@@ -261,7 +296,7 @@ get_impact <- function(cf_res,data_base,var_ls,var_name){
 
   #- create testing dataset -#
   	#- for all the other variables, the values are set as their mean values -#
-  temp_impact <- copy(X_eval_base) %>%
+  temp_impact <- data.table::copy(X_eval_base) %>%
     setnames(var_name,'temp_var') %>%
     .[rep(1,1000),] %>%
     .[,temp_var:=seq(min_temp_var,max_temp_var,length=1000)] %>%
@@ -271,7 +306,7 @@ get_impact <- function(cf_res,data_base,var_ls,var_name){
   tau_hat_set <- predict(cf_res, temp_impact, estimate.variance = TRUE)
 
  	#- data including tau_hat and se -#
-  return_data <- copy(temp_impact) %>% 
+  return_data <- temp_impact %>% 
     .[,tau_hat:=tau_hat_set$predictions] %>%
     .[,tau_hat_se:=sqrt(tau_hat_set$variance.estimates)] %>%
     .[,c('tau_hat','tau_hat_se',var_name),with=FALSE] %>%
@@ -284,22 +319,24 @@ get_impact <- function(cf_res,data_base,var_ls,var_name){
 
 # treat_var <- 'tgts'
 
-gen_impact_viz <- function(cf_res,data_base,treat_var,var_ls){
-	# cf_res= cf1; data_base=data_reg_case3; treat_var='treat2'; var_ls= cov_ls
+gen_impact_viz <- function(cf_res, data_base, treat_var, var_ls, var_ls_int){
+  # cf_res= res_cf; data_base=reg_data_fe; treat_var='treat2'
+  #  var_ls= c(cov_ls, "year_fe", "ind_fe"); var_ls_int = cov_ls
 
-  impact_data <- lapply(var_ls,function(x) get_impact(cf_res=cf_res,data_base=data_base,var_ls=var_ls,x)) %>%
+  impact_data <- lapply(
+    var_ls_int, function(x) get_impact(cf_res=cf_res,data_base=data_base,var_ls=var_ls,x)
+    ) %>%
     rbindlist() 
-  # x <- 'aa_s'
 
   min_max_v <- impact_data[,.(min_v=min(value),max_v=max(value)),by=variable]
 
-  temp_data <- copy(data_base) %>% 
+  temp_data <- data.table::copy(data_base) %>% 
     setnames(treat_var,'treat_var') 
 
   treatment_ls <- temp_data[,treat_var] %>%  unique %>%  sort
 
   data_dist_viz <- temp_data %>% 
-    .[,var_ls,with=FALSE] %>% 
+    .[,var_ls_int,with=FALSE] %>% 
     .[,id:=1:nrow(.)] %>% 
     melt(id.var='id') %>%
     .[,type:='Distribution'] %>% 
@@ -323,6 +360,46 @@ gen_impact_viz <- function(cf_res,data_base,treat_var,var_ls){
   return(g_impact_viz)
 
 }
+
+
+# /*=================================================*/
+#' # Visualize econML results
+# /*=================================================*/
+gen_econml_prep <- function(res_econml_dt, var){
+  # res_econml_dt=res_dml_orf; var =het_vars[1]
+
+  temp <- 
+    data.table::copy(res_econml_dt) %>%
+    .[target_var == var, c(var, "te_pred", "te_lower", "te_upper"), with=FALSE] %>%
+    .[,variable := var] %>%
+    setnames(var, "value")
+
+  return(temp)
+}
+
+
+gen_econml_vis <- function(res_econml_dt, het_vars){
+  # res_econml_dt=res_econml_dt; het_vars=het_vars
+  res <-  
+    lapply(het_vars, function(x) gen_econml_prep(res_econml_dt, var = x)) %>%
+    bind_rows()
+
+  ggplot(res)+
+    geom_ribbon(aes(
+      ymin = te_lower, 
+      ymax = te_upper,
+      x = value), fill = "grey70") +
+    geom_line(aes(value, te_pred)) +
+    facet_grid(~variable, scale='free') +
+    labs(
+      x = "",
+      y = "Treatment Effects"
+    ) 
+
+}
+
+
+
 
 #===================================
 # Find normalized difference
