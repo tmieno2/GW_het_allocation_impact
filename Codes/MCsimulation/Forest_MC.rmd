@@ -1,0 +1,129 @@
+---
+title: ""
+author: "Shunkei Kakimoto"
+output:
+  html_document:
+    number_sections: yes
+    theme: flatly
+    toc_float: yes
+    toc: yes
+    toc_depth: 3
+geometry: margin=1in
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(here)
+
+here::i_am("")
+
+# opts_knit$set(root.dir = "")
+# opts_knit$set(root.dir = here())
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  cache = FALSE,
+  comment = NA,
+  message = FALSE,
+  warning = FALSE,
+  tidy = FALSE,
+  cache.lazy = FALSE,
+  #--- figure ---#
+  dpi = 400,
+  fig.width = 7.5,
+  fig.height = 5,
+  out.width = "750px",
+  out.height = "500px"
+)
+
+# /*===== Basic Packages  =====*/
+# /*---- Data Wrangling ----*/
+library(data.table)
+library(tidyverse)
+library(DescTools)
+library(maps)
+
+# /*---- Visualization ----*/
+library(RColorBrewer)
+library(patchwork)
+library(ggplot2)
+library(ggthemes)
+library(ggpubr)
+library(viridis)
+library(grid)
+library(gridExtra)
+library(GGally)
+
+# /*---- Model Summary ----*/
+library(stats)
+library(modelsummary)
+library(flextable)
+library(officer)
+library(officedown)
+library(gt)
+
+```
+
+
+# Double Machine Learning Examples
++ replicate a EconML notebook: [ForestLearners Basic Example.ipynb](https://github.com/microsoft/EconML/blob/main/notebooks/ForestLearners%20Basic%20Example.ipynb)
+
+
+# ForestLearners Basic Example
+# DGP: 
+
+```{r}
+set.seed(123)
+
+# /*===========================================*/
+#'=  Training Data =
+# /*===========================================*/
+
+# Number of observations
+n = 1000
+# Dimension of variable 
+p = 5
+
+
+X <- matrix(rnorm(n*p), nrow=n)
+
+true_propensity <- function(x) .4 + .2 * (x[, 1] > 0)
+
+true_effect <- function(x) x[, 1] * (x[, 1] > 0)
+
+clip <- function(x, lower, upper) {
+  pmax(pmin(x, upper), lower)
+}
+
+true_conf <- function(x) clip(x[, 3], lower = -Inf, upper =  0)
+
+# --- Treatment assignment --- #
+T <- rbinom(n, 1, prob = true_propensity(X))
+# --- Error --- #
+e <- rnorm(n) 
+# --- Generate Output --- #
+Y <- true_effect(X) * T + true_conf(X) + e
+
+
+# /*===========================================*/
+#'=  Testing Data =
+# /*===========================================*/
+X_test <- matrix(0, 100, p)
+X_test[, 1] <-  seq(from = -2, to = 2, length.out = 100)
+
+
+```
+
+
+
+```{r}
+true_y <-
+  data.table(
+    x = X[, 1],
+    y = true_effect(X)
+    )
+ggplot(true_y)+
+  geom_line(aes(x=x, y=y), linetype = "dashed")
+```
+
+

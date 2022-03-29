@@ -182,10 +182,11 @@ get_ssurgo_props <- function(field, vars, summarize = FALSE) {
 
 # }
 
+# === For General Purpose === #
 gen_pred_data <- function(reg_data, cov_ls, target_var){
-  # data = reg_data_fe
+  # data = reg_data
   # cov_ls = het_vars
-  # target_var = "pr_in"
+  # target_var = "pet_in"
 
   X_test_base <- reg_data[,cov_ls, with=FALSE] %>%
   as_tibble(.) %>% 
@@ -194,7 +195,8 @@ gen_pred_data <- function(reg_data, cov_ls, target_var){
 
   target_range <- quantile(reg_data[[target_var]], prob = c(0.05, 0.95)) 
 
-  X_test <- X_test_base %>%
+  X_test <- 
+    copy(X_test_base) %>%
     setnames(target_var,'temp_var') %>%
     .[rep(1,1000),] %>%
     .[,temp_var:=seq(min(target_range), max(target_range), length=1000)] %>%

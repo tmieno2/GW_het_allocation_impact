@@ -5,7 +5,7 @@
 ## LR
 + *multi-year allocations*, with allocation 
 	* period 1: 2005 - 2007: 
-	* period 2: 2008 - 2012 (use this periods)
+	* period 2: 2008 - 2012 (use this periods?)
 	* period 3: 2013 - 2017
 
 + Due to the data availability, we focus on the years of 2007-2015
@@ -25,3 +25,8 @@
 
 
 
+
+
+## Data
++ years: 2007 - 2015
++ Since the 
