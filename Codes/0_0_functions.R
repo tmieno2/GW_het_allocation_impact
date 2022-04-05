@@ -193,7 +193,7 @@ gen_pred_data <- function(reg_data, cov_ls, target_var){
   summarize_all(mean) %>%
   data.table()
 
-  target_range <- quantile(reg_data[[target_var]], prob = c(0.05, 0.95)) 
+  target_range <- quantile(reg_data[[target_var]], prob = c(0.5, 0.95)) 
 
   X_test <- 
     copy(X_test_base) %>%

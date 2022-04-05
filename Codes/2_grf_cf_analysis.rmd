@@ -128,27 +128,33 @@ source(here("GitControlled/Codes/0_0_functions.R"))
 reg_data <- 
   here("Shared/Data/WaterAnalysis/comp_reg_dt.rds") %>%
   readRDS() %>%
-  .[year>=2008 & usage <= 40,]
+  .[year>=2008 & usage <= 40,] %>%
+  .[,tr_year:=factor(paste0(tr,year))] %>%
+  .[,trs_year:=factor(paste0(trs,year))]
 
-agg_reg_data <-
-  reg_data %>%
-  .[year %in% 2008:2012] %>%
-  .[,.(
-    usage = sum(usage),
-    treat2 = mean(treat2),
-    # --- soil --- #
-    silttotal_r = mean(silttotal_r),
-    claytotal_r = mean(claytotal_r),
-    slope_r = mean(slope_r),
-    ksat_r = mean(ksat_r),
-    awc_r = mean(awc_r),
-    # --- weather --- #    
-    pr_in = sum(pr_in),
-    pet_in = sum(pet_in),
-    gdd_in = sum(gdd_in),
-    # --- tr --- #
-    tr = tr
-    ),by=wellid]
+# agg_reg_data <-
+#   copy(reg_data) %>%
+#   .[year == 2012] %>%
+#   # .[year %in% 2008:2009] %>%
+#   # .[year %in% c(2008:2009, 2011:2012)] %>%
+#   .[,.(
+#     usage = sum(usage),
+#     treat2 = mean(treat2),
+#     # --- soil --- #
+#     silttotal_r = mean(silttotal_r),
+#     claytotal_r = mean(claytotal_r),
+#     slope_r = mean(slope_r),
+#     ksat_r = mean(ksat_r),
+#     awc_r = mean(awc_r),
+#     # --- weather --- #    
+#     pr_in = sum(pr_in),
+#     pet_in = sum(pet_in),
+#     gdd_in = sum(gdd_in),
+#     # --- tr --- #
+#     tr = tr
+#     ),by=wellid] %>%
+#   unique(.,by="wellid")
+
 
 #/*--------------------------------*/
 #' ## Preparation
@@ -162,8 +168,9 @@ cov_ls <- c(
   "silttotal_r", "claytotal_r", "slope_r", "ksat_r", "awc_r"
   )
 
+
 data <- reg_data
-data <- agg_reg_data
+# data <- agg_reg_data
 
 # /*===== Training Dataset  =====*/
 # --- dependent variable --- #
@@ -172,14 +179,8 @@ Y <- data[, usage]
 T <- data[, treat2]
 # --- features --- #
 X <- data[, ..cov_ls]
-
 # --- cluster  --- #
-# cl_var <- 
-#   data.table::copy(data) %>%
-#   .[,tr_year:=factor(paste0(tr,year))] %>%
-#   .[,tr_year]
-
-cl_var <- data[,tr] %>% as.factor()
+cl_var <- data[,tr_year]
 
 #/*--------------------------------*/
 #' ## 1st CF
@@ -203,9 +204,20 @@ cf_raw <- causal_forest(
   num.trees = 4000
 )
 
+
+# average_treatment_effect(cf_raw, target.sample = "treated")
+
 varimp = variable_importance(cf_raw)
 selected_vars = which(varimp > mean (varimp))
 se_cov <- data[,cov_ls[selected_vars], with=FALSE]
+
+vis_cf_raw <- gen_impact_viz(
+  cf_res= cf_raw,
+  data_base=data,
+  treat_var='treat2',
+  var_ls= cov_ls,
+  var_ls_int = cov_ls
+)
 
 #/*--------------------------------*/
 #' ## 2nd CF
@@ -217,14 +229,17 @@ cf_res <- causal_forest(
   Y.hat = Y_hat, 
   W.hat = W_hat,
   clusters = cl_var,
-  tune.parameters = "all",
+  sample.fraction = 0.4,
   num.trees = 4000
+  # tune.parameters = "all",
+  # tune.parameters = c(""),
 )
 
 #/*--------------------------------*/
 #' ## Visualization
 #/*--------------------------------*/
-gen_impact_viz(
+vis_cf_res <-
+  gen_impact_viz(
   cf_res= cf_res,
   data_base=data,
   treat_var='treat2',
@@ -233,14 +248,52 @@ gen_impact_viz(
 )
 ```
 
-
 + The top row shows the histograms for each variable, and the bottom row shows the predicted treatment effects. Specifically, in each panel in the bottom row, the black line shows how the treatment effects varies, and the grey area indicates 95% CI for heterogeneous treatment effects.
 
 + As a results of the covariate selection process, `r cov_ls[selected_vars]` were selected. 
 
-+ We found in-season total precipitation (`pr_in`) contributed strong heterogeneity in treatment effects. For regions where precipitation is low, farmers' groundwater use was more strongly regulated, and the effects of the regulation became less in the regions where precipitation is high.  
++ We found in-season total precipitation (`pr_in`) created strong heterogeneity in treatment effects. For regions where precipitation is low, farmers' groundwater use was more strongly regulated, and the effects of the regulation became less in the regions where precipitation is high. 
 
 + This finding suggests that it is preferable to account for the spatial gradients in precipitation in designing groundwater allocation policy to achieve higher economic efficiency. 
+
+
+## Compare
+```{r, echo=F}
+vis_cf_raw 
+
+vis_cf_res 
+```
+
+
+## Further
++ Although treatment assignments (9 acre-inches per year for LR, and no limitation on TB) are consistent through 2008-2015, this period has two allocation periods (1st period: 2008-2012, 2nd period: 2013-2017). In each allocation period, a farmer was allowed to carryover unused allocation into the next period. 
+  * So, for example, a farmer in LR can use 9 acre-inches per * 5 years = 45 acre-inches 2008-2012, and if he used only 30 acre-inches during 2008-2012, then he can use the remainder 15 inches for the next allocation period 2013-2017.
+
++ This means that during the second period, it does not necessary mean that all the farmers in LR gets 9 acre-inches per year restriction. Some farmers who saved sizable amount of water might have used 10 acre-inches in the 2nd period. So, if we include the 2nd allocation period, the treatment effects would be underestimated. (?)
+
++ (??In 2015, LR had a maximum use of 13 inches per acre)
+
+## About the heterogeneous treatment effects estimation
+
+\begin{align}
+Y &= \theta(X) \cdot T + g(X,W) + \varepsilon \quad E[\varepsilon|X, W] = 0 \\
+T &=  f(X, W) + \eta \quad E[\eta|X, W] = 0 \\
+E[\eta \cdot \varepsilon|X, W] = 0
+\end{align}
+
++ We use spatial discontinuity for treatment assignment, so it is likely that unconfoundedness assumption is likely to be satisfied. 
+
++ We are using precipitation, evapotranspiration, and soil characteristics as X, and W.
++ Especially, we are suspecting that X (heterogeneous driver) is precipitation.
+
++ Other factors?
+  * Irrigation technology:
+    - more efficient irrigation technology can alleviate the impact of precipitation.
+    - irrigation technology and groundwater usage could be correlated
+      + high irrigation technology can apply less amount of water to satisfy the water demand of field by minimizing the evaporation. 
+
+
+
 
 
 
