@@ -24,22 +24,24 @@ library(ggpubr)
 library(viridis)
 library(grid)
 library(gridExtra)
+library(here)
 library(flextable)
 library(reticulate)
 # knitr::opts_chunk$set(echo = TRUE)
 
-# opts_knit$set(root.dir = here())
-opts_knit$set(root.dir = "~/Dropbox/ResearchProject/HeterogeneousAllocation")
+
+opts_knit$set(root.dir = here::i_am("GitControlled/Codes/CMLAnalysis/run_EconML.rmd"))
+# opts_knit$set(root.dir = "~/Dropbox/ResearchProject/HeterogeneousAllocation")
 
 opts_chunk$set(
-  fig.align = "center", 
+  fig.align = "center",
   fig.retina = 5,
-  warning = FALSE, 
+  warning = FALSE,
   message = FALSE,
   cache = FALSE, # <-- T
   cache.lazy = FALSE,
   echo = TRUE
-  )
+)
 ```
 
 # Objective
@@ -75,10 +77,11 @@ opts_chunk$set(
 
 ```{r}
 #--- reticulate ---#
-use_python("./myenv/bin/python")
-use_virtualenv("./myenv/bin/activate_this.py")
-
+# use_python("./myenv/bin/python")
+# use_virtualenv("./myenv/bin/activate_this.py")
+# use_python("/anaconda3/bin/python")
 # repl_python()
+py_config()
 ```
 
 ```{python}
@@ -99,38 +102,41 @@ from sklearn.linear_model import Lasso, LassoCV, LogisticRegression, LogisticReg
 
 # Data Preparation
 
-```{r}
+```{r }
 #--- import the data ---# (yearly data)
-ir_data <- readRDS('./Shared/Data/ir_reg.rds') %>%
-  .[source %in% c('Meter','METER','metered'),] %>%
-  .[,trs:=paste(twnid,rngid,section,sep='_')] %>%
-  .[,tr:=paste(twnid,rngid,sep='_')] %>%
-  .[,phase1:=ifelse(year<2008,1,0)] %>%
-  .[,phase2:=ifelse(year>=2008,1,0)]
+ir_data <- 
+  readRDS(here("Shared/Data/ir_reg.rds")) %>%
+  .[source %in% c("Meter", "METER", "metered"), ] %>%
+  .[, trs := paste(twnid, rngid, section, sep = "_")] %>%
+  .[, tr := paste(twnid, rngid, sep = "_")] %>%
+  .[, phase1 := ifelse(year < 2008, 1, 0)] %>%
+  .[, phase2 := ifelse(year >= 2008, 1, 0)]
 
 #--- data ---#
 data_w_W1 <- ir_data %>%
-  .[Low_Tri_5mi==1, ] %>%
-  .[,`:=`(
+  .[Low_Tri_5mi == 1, ] %>%
+  .[, `:=`(
     #--- LR east vs TB (2007-2008)---#
-    treat1e=ifelse(phase1==1 & nrdname=='Lower Republican' & in_east==1, 1, 0),
+    treat1e = ifelse(phase1 == 1 & nrdname == "Lower Republican" & in_east == 1, 1, 0),
     #--- LR west vs TB (2007 - 2008) ---#
-    treat1w=ifelse(phase1==1 & nrdname=='Lower Republican' & in_west==1, 1, 0),
+    treat1w = ifelse(phase1 == 1 & nrdname == "Lower Republican" & in_west == 1, 1, 0),
     #--- LR vs TB (2008 - 2015)---#
-    treat2=ifelse(((nrdname=='Lower Republican' & phase2==1) | (t5r22==1& year>=2009)), 1, 0)
-    )] %>%
-  .[,`:=`(
-    mean_precip=mean(precip_in),
-    mean_gdd=mean(gdd_in),
-    mean_tmin=mean(tmin_in),
-    mean_tmax=mean(tmax_in)
-  ),by=wellid]
+    treat2 = ifelse(((nrdname == "Lower Republican" & phase2 == 1) | (t5r22 == 1 & year >= 2009)), 1, 0)
+  )] %>%
+  .[, `:=`(
+    mean_precip = mean(precip_in),
+    mean_gdd = mean(gdd_in),
+    mean_tmin = mean(tmin_in),
+    mean_tmax = mean(tmax_in)
+  ), by = wellid]
 
 #--- variables to be used in the analysis ---#
-cov_ls <- c('precip_in', 'tmin_in', 'tmax_in', 'gdd_in',
-  'silt_pct', 'clay_pct', 'slope', 'kv', 'awc')
+cov_ls <- c(
+  "precip_in", "tmin_in", "tmax_in", "gdd_in",
+  "silt_pct", "clay_pct", "slope", "kv", "awc"
+)
 
-all_vars <- c(cov_ls,'usage','treat2', 'tr', 'year')
+all_vars <- c(cov_ls, "usage", "treat2", "tr", "year")
 
 #--- set target variable ---#
 target_var <- "precip_in"
@@ -138,43 +144,42 @@ target_var <- "precip_in"
 #--- W1 case 3: 11 inches (LR) vs no limit (TB) (2008 - 2015) ---#
 data_reg_case3 <- data_w_W1 %>%
   .[year >= 2008, ] %>%
-  .[,..all_vars] %>% 
-  .[usage<=40,] %>% # Why?? -> make upper limit
-  .[,tr_year:=factor(paste0(tr,year))] %>% 
+  .[, ..all_vars] %>%
+  .[usage <= 40, ] %>% # Why?? -> make upper limit
+  .[, tr_year := factor(paste0(tr, year))] %>%
   na.omit()
 
 
 #### ==== Training data ==== ####
-Y <- data_reg_case3[,usage] %>% 
+Y <- data_reg_case3[, usage] %>%
   as.array()
 
-T <- data_reg_case3[,treat2] %>% 
+T <- data_reg_case3[, treat2] %>%
   as.array()
 
-X_train <- data_reg_case3[,cov_ls,with=FALSE] %>%
+X_train <- data_reg_case3[, cov_ls, with = FALSE] %>%
   as.matrix() %>%
   unname()
 
 
 ## === Testing data === ##
-min_temp <- data_reg_case3[[target_var]] %>% quantile(prob=0.025)
-max_temp <- data_reg_case3[[target_var]] %>% quantile(prob=0.90)
+min_temp <- data_reg_case3[[target_var]] %>% quantile(prob = 0.025)
+max_temp <- data_reg_case3[[target_var]] %>% quantile(prob = 0.90)
 
-X_eval_base <- copy(data_reg_case3)[,cov_ls,with=FALSE] %>%
-  as_tibble(.) %>% 
+X_eval_base <- copy(data_reg_case3)[, cov_ls, with = FALSE] %>%
+  as_tibble(.) %>%
   summarize_all(mean) %>%
   data.table()
 
 X_eval <- copy(X_eval_base) %>%
-  setnames(target_var,'temp_var') %>%
-  .[rep(1,1000),] %>%
-  .[,temp_var:=seq(min_temp,max_temp,length=1000)] %>%
-  setnames('temp_var',target_var) %>%
+  setnames(target_var, "temp_var") %>%
+  .[rep(1, 1000), ] %>%
+  .[, temp_var := seq(min_temp, max_temp, length = 1000)] %>%
+  setnames("temp_var", target_var) %>%
   # reoder columns
-  .[,..cov_ls] %>%
+  .[, ..cov_ls] %>%
   as.matrix() %>%
   unname()
-
 ```
 
 # DROrthoForest (Doubly Robust ORF)
@@ -204,15 +209,15 @@ dr_orf_te_lower, dr_orf_te_upper = dr_orf_est.effect_interval(r.X_eval)
 ```
 
 ```{r}
-dr_orf_cate_effect <- tibble("value" = X_eval[,1], "tau_hat" = py$dr_orf_te_pred) %>%
-   mutate(
+dr_orf_cate_effect <- tibble("value" = X_eval[, 1], "tau_hat" = py$dr_orf_te_pred) %>%
+  mutate(
     te_pred_down = py$dr_orf_te_lower,
     te_pred_up   = py$dr_orf_te_upper
   ) %>%
   data.table() %>%
-  .[, method:="DR_ORF"]
+  .[, method := "DR_ORF"]
 
-# dr_orf_vis <- dr_orf_cate_effect %>% 
+# dr_orf_vis <- dr_orf_cate_effect %>%
 #   ggplot(aes(value, tau_hat)) +
 #   geom_ribbon(aes(ymin = te_pred_down, ymax = te_pred_up),
 #               fill = "grey70") +
@@ -252,15 +257,15 @@ dml_orf_te_lower, dml_orf_te_upper = dml_orf_est.effect_interval(r.X_eval)
 
 
 ```{r}
-dml_orf_cate_effect <- tibble("value" = X_eval[,1], "tau_hat" = py$dml_orf_te_pred) %>%
-   mutate(
+dml_orf_cate_effect <- tibble("value" = X_eval[, 1], "tau_hat" = py$dml_orf_te_pred) %>%
+  mutate(
     te_pred_down = py$dml_orf_te_lower,
     te_pred_up   = py$dml_orf_te_upper
   ) %>%
   data.table() %>%
-  .[, method:="DML_ORF"]
+  .[, method := "DML_ORF"]
 
-# dml_orf_vis <- dml_orf_cate_effect %>% 
+# dml_orf_vis <- dml_orf_cate_effect %>%
 #   ggplot(aes(value, tau_hat)) +
 #   geom_ribbon(aes(ymin = te_pred_down, ymax = te_pred_up),
 #               fill = "grey70") +
@@ -275,30 +280,30 @@ dml_orf_cate_effect <- tibble("value" = X_eval[,1], "tau_hat" = py$dml_orf_te_pr
 # Causal Forest of GRF
 
 ```{r}
-source('./GitControlled/Codes/Functions/functions.R')
+source("./GitControlled/Codes/Functions/functions.R")
 
 #-- cluster: unique combinations of twnid,rngid, year --#
-cl <- data_reg_case3[,tr_year]
+cl <- data_reg_case3[, tr_year]
 
-Y_cf <- data_reg_case3[,usage]
-T_cf <- data_reg_case3[,treat2]
-X_cf <- data_reg_case3[,cov_ls,with=FALSE]
+Y_cf <- data_reg_case3[, usage]
+T_cf <- data_reg_case3[, treat2]
+X_cf <- data_reg_case3[, cov_ls, with = FALSE]
 
 
-Y_forest <- regression_forest(X_cf, Y_cf, clusters=cl)
+Y_forest <- regression_forest(X_cf, Y_cf, clusters = cl)
 Y_hat <- predict(Y_forest)$predictions
-W_forest <- regression_forest(X_cf, T_cf, clusters=cl)
+W_forest <- regression_forest(X_cf, T_cf, clusters = cl)
 W_hat <- predict(W_forest)$predictions
 
-#=== run CF ===#
+# === run CF ===#
 cf1 <- causal_forest(
   X_cf, Y_cf, T_cf,
-  Y.hat = Y_hat, 
+  Y.hat = Y_hat,
   W.hat = W_hat,
   clusters = cl,
-  num.trees= 2000,
-  tune.parameters = 'all' 
-  )
+  num.trees = 2000,
+  tune.parameters = "all"
+)
 
 #--- assessing treatment heterogeneity ---#
 cf_cate_effect <- get_impact(
@@ -306,17 +311,17 @@ cf_cate_effect <- get_impact(
   data_base = data_reg_case3,
   var_ls = cov_ls,
   var_name = target_var
-  ) %>%
-  .[,`:=`(
-    te_pred_down = tau_hat-1.96*tau_hat_se,
-    te_pred_up = tau_hat+1.96*tau_hat_se
-    )] %>%
-  .[,.(value, tau_hat, te_pred_down, te_pred_up)] %>%
-  .[,method := "CF"]
-  
-# cf_vis <- ggplot() + 
+) %>%
+  .[, `:=`(
+    te_pred_down = tau_hat - 1.96 * tau_hat_se,
+    te_pred_up = tau_hat + 1.96 * tau_hat_se
+  )] %>%
+  .[, .(value, tau_hat, te_pred_down, te_pred_up)] %>%
+  .[, method := "CF"]
+
+# cf_vis <- ggplot() +
 #     geom_ribbon(data= cf_cate_effect, aes(
-#       ymin = te_pred_down, 
+#       ymin = te_pred_down,
 #       ymax = te_pred_up,
 #       x = value), fill = "grey70") +
 #   geom_line(data= cf_cate_effect, aes(value, tau_hat)) +
@@ -385,15 +390,15 @@ interval_dt = pd.DataFrame(np.quantile(tau_posterior, [0.05,0.95], axis=1).T, co
 
 
 ```{r}
-xbcf_cate_effect <- tibble("value" = X_eval[,1], "tau_hat" = py$xbcf_te_pred) %>%
-   mutate(
-    te_pred_down = py$interval_dt[,"CI_lower"],
-    te_pred_up   = py$interval_dt[,"CI_upper"]
+xbcf_cate_effect <- tibble("value" = X_eval[, 1], "tau_hat" = py$xbcf_te_pred) %>%
+  mutate(
+    te_pred_down = py$interval_dt[, "CI_lower"],
+    te_pred_up   = py$interval_dt[, "CI_upper"]
   ) %>%
   data.table() %>%
-  .[, method:="XBCF"]
+  .[, method := "XBCF"]
 
-# xbcf_vis <- dml_orf_cate_effect %>% 
+# xbcf_vis <- dml_orf_cate_effect %>%
 #   ggplot(aes(value, tau_hat)) +
 #   geom_ribbon(aes(ymin = te_pred_down, ymax = te_pred_up),
 #               fill = "grey70") +
@@ -411,17 +416,18 @@ xbcf_cate_effect <- tibble("value" = X_eval[,1], "tau_hat" = py$xbcf_te_pred) %>
 ```{r, fig.width=12, fig.height=6}
 report <- bind_rows(dr_orf_cate_effect, dml_orf_cate_effect, cf_cate_effect, xbcf_cate_effect)
 
-ggplot(report)+
+ggplot(report) +
   geom_ribbon(aes(
-      ymin = te_pred_down, 
-      ymax = te_pred_up,
-      x = value), fill = "grey70") +
+    ymin = te_pred_down,
+    ymax = te_pred_up,
+    x = value
+  ), fill = "grey70") +
   geom_line(aes(value, tau_hat)) +
   facet_grid(~method) +
   labs(
     x = target_var,
     y = "Treatment Effects"
-  ) 
+  )
 ```
 
 ## Finding
