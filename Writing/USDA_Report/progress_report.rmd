@@ -100,7 +100,7 @@ library(rattle)
 
 ```
 
-+ We control weather and soil conditions in the regression analysis. For weather variables, we obtained total precipitation (in mm) and total reference grass evaportranspiration (in mm) for the growing season (April to September) from daily weather records of gridMET database. For soil characteristics data, we collected the percentage of silt, clay, as well as hydraulic conductivity (in um/s), water holding capacity (in cm/cm), and slope (in percentage) from the the Soil Survey Geographic (SSURGO) database. 
++ We control weather and soil conditions in the regression analysis. For weather variables, we obtained total precipitation (in inch) and total reference grass evaportranspiration (in inch) for the growing season (April to September) from daily weather records of gridMET database. For soil characteristics data, we collected the percentage of silt, clay, as well as hydraulic conductivity (in um/s), water holding capacity (in cm/cm), and slope (in percentage) from the the Soil Survey Geographic (SSURGO) database. 
 
 # Method
 + To estimate the treatment effect heterogeneity, we used Causal Forest (CF) model (@athey2016recursive; @wager2018estimation.) CF is a machine learning methods developed specifically for identifying heterogeneous treatment effects. We employed cluster-robust estimation to take into account natural clusters in the data. Each cluster consists of time-series observations of the wells located within the same region.
@@ -108,7 +108,7 @@ library(rattle)
 
 # Preliminary Findings
 + Figure \@ref(fig:vis-cf-res) shows the estimated treatment effects (in inches) with the corresponding histogram for some internally selected variables. Among all the covariates, water holding capacity (i.e., awc_r), in-season total reference grass evaportranspiration (i.e., pet_in), and in-season total precipitation were selected as variables affecting treatment effect heterogeneity by our CF model. 
-+ The result suggests that the treatment effects significantly vary by in-season total precipitation. For example, in areas in which in-season total precipitation was high, say 20 mm, a farmer reduced his water usage by about 2.2 acre-inches on average than what would be without allocation limit. Meanwhile, the areas in which in-season total precipitation was low, say 12 mm, a farmer reduced his water usage by about 4 acre-inches on average than the counterfactual outcome. 
++ The result suggests that the treatment effects significantly vary by in-season total precipitation. For example, in areas in which in-season total precipitation was high, say 20 inches, a farmer reduced his water usage by about 2.2 acre-inches on average than what would be without allocation limit. Meanwhile, the areas in which in-season total precipitation was low, say 12 inches, a farmer reduced his water usage by about 4 acre-inches on average than the counterfactual outcome. 
 + This means that the current uniform allocation limit design may be more binding in areas with less precipitation.
 
 

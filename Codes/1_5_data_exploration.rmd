@@ -73,6 +73,7 @@ MinMax <- function(x){
 } 
 ```
 
+
 # Objective
 + check the new regression data (`comp_reg_dt.rmd`)
 	* report the summary statistics and visualize the data

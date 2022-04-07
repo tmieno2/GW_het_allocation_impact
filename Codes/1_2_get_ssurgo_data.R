@@ -66,25 +66,27 @@ soil_var <- c(
 	)
 
 # NOTE: each filed (buffer) data should be separately passed on get_ssurgo_props()
-res_ssurgo <- mclapply(
+res_ssurgo <- lapply(
 	seq_len(nrow(well_buffer_sp)), 
-	function(x) 
-	# x=1
-		get_ssurgo_props(
-			field = well_buffer_sp[x,],
-			vars = soil_var,
-			summarize = TRUE
-		) %>%
-		.[, wellid := well_buffer_sp[x, ]$wellid],
-	mc.cores = 5) %>%
+	function(x) {
+			print(paste0("working on wellid: ", well_buffer_sp[x, ]$wellid, " field"))
+		# x=1
+			get_ssurgo_props(
+				field = well_buffer_sp[x,],
+				vars = soil_var,
+				summarize = TRUE
+			) %>%
+			.[, wellid := well_buffer_sp[x, ]$wellid]
+	}) %>%
 	bind_rows()
 
-
-saveRDS(res_ssurgo, here("Shared/Data/WaterAnalysis/ssurgo_ready.rds"))
-
+# fail: "working on wellid: 112591 field"
 
 
+saveRDS(res_ssurgo, here("Shared/Data/WaterAnalysis/ssurgo_ready_new.rds"))
 
+# ssurgo_old <- readRDS(here("Shared/Data/WaterAnalysis/ssurgo_ready.rds"))
+# ssurgo_new <- readRDS(here("Shared/Data/WaterAnalysis/ssurgo_ready_new.rds"))
 
 
 

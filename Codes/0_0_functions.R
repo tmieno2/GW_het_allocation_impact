@@ -95,8 +95,12 @@ get_in_values_gridMET <- function(var_name, year){
 
 
 get_ssurgo_props <- function(field, vars, summarize = FALSE) {
+  # field = as(filter(well_buffer_sf, wellid==112576), "Spatial")
+  # field = as(filter(well_buffer_sf, wellid==112591), "Spatial")
+  # field = as(filter(well_buffer_sf, wellid==231010), "Spatial")
   # field= as(well_buffer_sf[5,], "Spatial")
   # vars = soil_var
+  # summarize = TRUE
   # Get SSURGO mukeys for polygon intersection
   ssurgo_geom <-
     SDA_spatialQuery(
@@ -105,16 +109,18 @@ get_ssurgo_props <- function(field, vars, summarize = FALSE) {
       db = "SSURGO",
       geomIntersection = TRUE
     ) %>%
-    st_as_sf()%>%
+    st_as_sf() %>%
     dplyr::mutate(
-      area = as.numeric(st_area(.)),
+      # area = as.numeric(st_area(.)), #this causes an error for some polygons
+      area = .$area_ac,
       area_weight = area / sum(area)
     )
 
+
   # --- check --- #
-  # ggplot()+geom_sf(data=ssurgo_geom, color="blue")
+  # ggplot()+geom_sf(data=ssurgo_geom, aes(fill=factor(mukey)))
   # Looks like, in one buffer (surrounding a well), there are multiple polygon data where each of them are 
-  # associated with unique mukey 
+  # associated with a unique mukey 
   # `area_weight` indicates a portion of each polygon to entire butter
 
   # Get soil properties for each mukey
@@ -134,7 +140,7 @@ get_ssurgo_props <- function(field, vars, summarize = FALSE) {
       ssurgo_data %>%
       data.table() %>%
       .[,
-        lapply(.SD, weighted.mean, w = area_weight),
+        lapply(.SD, weighted.mean, w = area_weight, na.rm = TRUE),
         .SDcols = vars
       ]
     return(ssurgo_data_sum)

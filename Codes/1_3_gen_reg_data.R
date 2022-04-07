@@ -29,17 +29,20 @@ data_w_LR_TB <- readRDS(here("Shared/Data/WaterAnalysis/data_w_LR_TB.rds"))
 # /*===== weather and soil data =====*/
 gmet_dt <- readRDS(here("Shared/Data/WaterAnalysis/gridMET_ready.rds"))
 
-ssurgo_dt <- readRDS(here("Shared/Data/WaterAnalysis/ssurgo_ready.rds"))
+ssurgo_dt <- readRDS(here("Shared/Data/WaterAnalysis/ssurgo_ready_new.rds"))
 
-gmet_ssurgo_dt <- ssurgo_dt[gmet_dt, on = "wellid"]
+# ===  Confirm that weather and soil data have exactly same number of wellid 
+# that the original regression data has === #
+# data_w_LR_TB[,wellid] %>% unique() %>% length()
+# ssurgo_dt[,wellid] %>% unique() %>% length()
+# gmet_dt[,wellid] %>% unique() %>% length()
 
 
 # /*=================================================*/
 #' # Create new regression data
 # /*=================================================*/
 
-# /*===== substruct data to update some columns=====*/
-
+# === Variables to keep in the new regression data=== #
 var_ls <- c(
 	"wellid",
 	"nrdname",
@@ -49,73 +52,32 @@ var_ls <- c(
 	"treat1e", # treatment indicator for phase1: LR east vs TB (2007)
 	"treat1w", # treatment indicator for phase1: LR west vs TB (2007 - 2008)
 	"treat2", # treatment indicator for phase2: LR vs TB (2008 - 2015)
-	"usage" # dependent variable
+	"usage", # dependent variable
+	"longdd", "latdd",
+	"twnid", "rngid", "rngdir", "section"
 	)
 
 # /*---- check ----*/
-# lapply(var_ls, function(x){any(is.na(data_w_LR_TB[[x]]))})
+# temp <- data_w_LR_TB[, ..var_ls]
+# sapply(temp, function(x) any(is.na(x)))
 # So, this means that for some wells in some years, "usage" is missing
 
-# --- for example --- #
-# data_w_LR_TB[wellid==709,..var_ls]
-# well_ssurgo_gmet_dt[wellid==709]
 
-# /*-------- end ---------*/
-
-sub_data_w_LR_TB <- data_w_LR_TB [usage <= 100, ..var_ls] %>%
+sub_data_w_LR_TB <- data_w_LR_TB[, ..var_ls] %>%
+	# remove rows where usage is missing
 	na.omit()
 
 
 # /*===== merge source data with weather and soil data =====*/
-# + well_ssurgo_gmet_dt has NA 
-comp_reg_dt <- gmet_ssurgo_dt[sub_data_w_LR_TB, on=c("year", "wellid")] %>%
-	na.omit()
+# + ssurgo_dt has missing values 
+comp_reg_dt <- 
+	sub_data_w_LR_TB %>%
+	gmet_dt[., on=c("year", "wellid")] %>%
+	ssurgo_dt[., on = "wellid"] 
+
+# sapply(comp_reg_dt, function(x) any(is.na(x)))
 
 saveRDS(comp_reg_dt, here("Shared/Data/WaterAnalysis/comp_reg_dt.rds"))
-
-
-#/*----------------------------------*/
-#' ## aggregated data by years
-#/*----------------------------------*/
-
-agg_comp_reg_dt <- comp_reg_dt %>%
-  .[year %in% 2008:2012 & usage <= 40,] %>%
-  .[,`:=`(
-    sum_usage = sum(usage),
-    pr_in = sum(pr_in),
-    mean_tmin = mean(tmmn_in),
-    mean_tmax = mean(tmmx_in),
-    sum_gdd = sum(gdd_in)
-  ),by=wellid] %>%
-  unique(., by="wellid")
-
-# summary(agg_comp_reg_dt[["usage"]])
-# length(unique(agg_comp_reg_dt[,wellid]))
-
-saveRDS(agg_comp_reg_dt, here("Shared/Data/WaterAnalysis/agg_comp_reg_dt.rds"))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

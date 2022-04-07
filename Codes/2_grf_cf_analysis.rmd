@@ -70,31 +70,6 @@ library(here)
 # Data
 We used well-level groundwater extraction data focusing on two Nebraska's Natural Resources Districts: Lower Republican (LR) and Tri-Basin(TB) during 2008-2015. Throughout the period, LR (treatment group) had an allocation of 9 acre-inches per year, while TB (control group) had no allocation. Furthermore, we used the wells located in a five-mile buffer from the border between LR and TB. 
 
-```{r, echo=F}
-# data_w_LR_TB <- 
-#   here("Shared/Data/WaterAnalysis/data_w_LR_TB.rds") %>%
-#   readRDS()
-
-# nrd_bd <- here("Shared/Data/WaterAnalysis/NRD_bd/BND_NaturalResourceDistricts_DNR.shp") %>%
-#   st_read() %>%
-#   st_transform(., 4269) %>%
-#   filter(NRD_Name %in% c("Tri-Basin", "Lower Republican"))
-
-# well_sf <- data_w_LR_TB %>%
-#   unique(.,by="wellid") %>%
-#   .[,.(wellid, longdd, latdd)] %>%
-#   # --- the geographic coordinate in the well data is NAD83 (espg=4269)--- #
-#   st_as_sf(., coords = c("longdd","latdd"), crs = 4269)
-
-
- 
-# ggplot()+
-#   geom_sf(data = nrd_bd, fill=NA, color="blue") +
-#   geom_sf(data=well_sf, size=0.5) +
-#   theme_void()
-```
-
-
 <br>
 
 The variables we considered in the regression analysis are the following: <br />
@@ -128,49 +103,162 @@ source(here("GitControlled/Codes/0_0_functions.R"))
 reg_data <- 
   here("Shared/Data/WaterAnalysis/comp_reg_dt.rds") %>%
   readRDS() %>%
-  .[year>=2008 & usage <= 40,] %>%
-  .[,tr_year:=factor(paste0(tr,year))] %>%
-  .[,trs_year:=factor(paste0(trs,year))]
+  # .[year>=2008 & usage <= 40,] %>%
+  .[year %in% 2008:2012 & usage <= 40,] %>%
+  .[,tr_year:=factor(paste0(tr,year))]
 
-# agg_reg_data <-
-#   copy(reg_data) %>%
-#   .[year == 2012] %>%
-#   # .[year %in% 2008:2009] %>%
-#   # .[year %in% c(2008:2009, 2011:2012)] %>%
-#   .[,.(
-#     usage = sum(usage),
-#     treat2 = mean(treat2),
-#     # --- soil --- #
-#     silttotal_r = mean(silttotal_r),
-#     claytotal_r = mean(claytotal_r),
-#     slope_r = mean(slope_r),
-#     ksat_r = mean(ksat_r),
-#     awc_r = mean(awc_r),
-#     # --- weather --- #    
-#     pr_in = sum(pr_in),
-#     pet_in = sum(pet_in),
-#     gdd_in = sum(gdd_in),
-#     # --- tr --- #
-#     tr = tr
-#     ),by=wellid] %>%
-#   unique(.,by="wellid")
+# sapply(reg_data, function(x) any(is.na(x)))
 
 
+# /*===== Aggregated Data =====*/
+comp_wellid <- 
+  reg_data %>%
+  .[year %in% 2008:2012, .(wellid, year)] %>%
+  dcast(wellid ~ year, value.var = "year") %>%
+  na.omit() %>%
+  .[,wellid]
+
+
+agg_reg_data <-
+  copy(reg_data) %>%
+  .[year %in% 2008:2012 & wellid %in% comp_wellid] %>%
+  # .[year %in% 2008:2012] %>%
+  # .[year %in% c(2008:2009, 2011:2012)] %>%
+  .[,.(
+    wellid = wellid,
+    usage = sum(usage),
+    treat2 = mean(treat2),
+    # --- soil --- #
+    sandtotal_r = mean(sandtotal_r),
+    silttotal_r = mean(silttotal_r),
+    claytotal_r = mean(claytotal_r),
+    slope_r = mean(slope_r),
+    ksat_r = mean(ksat_r),
+    awc_r = mean(awc_r),
+    # --- weather --- #    
+    pr_in = sum(pr_in),
+    pet_in = sum(pet_in),
+    gdd_in = sum(gdd_in),
+    # --- tr --- #
+    tr = factor(tr)
+    ),by=wellid] %>%
+  unique(.,by="wellid") %>%
+  .[treat2 %in% c(0,1),]
+
+# in the previous code, some rows has T=0.8
+
+agg_reg_data2[,treat2] %>% unique()
+
+```
+
+
+```{r}
+# /*===== Check how often farmers in LR use more than 9 inches =====*/
+ch_reg_data <- 
+  here("Shared/Data/WaterAnalysis/comp_reg_dt.rds") %>%
+  readRDS() %>%
+  .[treat2==1,.(ID, year, usage)] %>%
+  .[,over_9 := ifelse(usage<=9, 0, 1)] %>%
+  .[, .(
+    num_obs = .N,
+    sum_over_9 = sum(over_9, na.rm=TRUE)
+    ), by = year] %>%
+  .[,prop_over_9 := sum_over_9/num_obs] %>%
+  .[order(year)]
+
+ggplot(ch_reg_data)+
+  geom_line(aes(x=year, y=prop_over_9))
+
+
+strict_trt_grp <- 
+  reg_data %>%
+  .[treat2==1 &usage <= 9,]
+
+con_grp <-
+  reg_data %>%
+  .[treat2==0,]
+
+strict_reg_data <-
+  rbind(strict_trt_grp, con_grp)
+
+
+strict_comp_wellid <- 
+  strict_reg_data %>%
+  .[year %in% 2008:2012, .(wellid, year)] %>%
+  dcast(wellid ~ year, value.var = "year") %>%
+  na.omit() %>%
+  .[,wellid]
+
+
+strict_agg_reg_data <-
+  copy(strict_reg_data) %>%
+  .[wellid %in% strict_comp_wellid] %>%
+  # .[year %in% 2008:2012] %>%
+  # .[year %in% c(2008:2009, 2011:2012)] %>%
+  .[,.(
+    wellid = wellid,
+    usage = sum(usage),
+    treat2 = mean(treat2),
+    # --- soil --- #
+    sandtotal_r = mean(sandtotal_r),
+    silttotal_r = mean(silttotal_r),
+    claytotal_r = mean(claytotal_r),
+    slope_r = mean(slope_r),
+    ksat_r = mean(ksat_r),
+    awc_r = mean(awc_r),
+    # --- weather --- #    
+    pr_in = sum(pr_in),
+    pet_in = sum(pet_in),
+    gdd_in = sum(gdd_in),
+    # --- tr --- #
+    tr = factor(tr)
+    ),by=wellid] %>%
+  unique(.,by="wellid") %>%
+  .[treat2 %in% c(0,1),]
+
+# in the previous code, some rows has T=0.8
+
+strict_agg_reg_data[,treat2] %>% unique()
+
+
+
+```
+
+
+```{r}
 #/*--------------------------------*/
 #' ## Preparation
 #/*--------------------------------*/
 # /*===== control variables =====*/
 # remove gdd_in
+cov_ls_all <- c(
+  # --- weather --- #
+  "gdd_in", "pr_in","pet_in",
+  # --- soil --- #
+  "sandtotal_r", "silttotal_r", "claytotal_r", "slope_r", "ksat_r", "awc_r"
+  )
+
+here("Shared/Data/WaterAnalysis/comp_reg_dt.rds") %>%
+  readRDS() %>%
+  .[, ..cov_ls_all] %>%
+  # .[, ..cov_ls] %>%
+  cor()
+
+
+
 cov_ls <- c(
   # --- weather --- #
-  "pr_in","pet_in",
+  "pr_in",  "pet_in",
   # --- soil --- #
-  "silttotal_r", "claytotal_r", "slope_r", "ksat_r", "awc_r"
+  "claytotal_r", "slope_r", "awc_r"
   )
 
 
-data <- reg_data
-# data <- agg_reg_data
+# data <- reg_data
+data <- agg_reg_data
+data <- strict_reg_data
+data <- strict_agg_reg_data
+
 
 # /*===== Training Dataset  =====*/
 # --- dependent variable --- #
@@ -180,18 +268,35 @@ T <- data[, treat2]
 # --- features --- #
 X <- data[, ..cov_ls]
 # --- cluster  --- #
-cl_var <- data[,tr_year]
+# cl_var <- data[,tr_year]
+cl_var <- data[,tr]
 
 #/*--------------------------------*/
 #' ## 1st CF
 #/*--------------------------------*/
 set.seed(23456)
 
-forest_W <- regression_forest(X, T, num.trees = 4000, clusters = cl_var)
+pred_X <- data[, ..cov_ls_all]
+# pred_X <- data[, ..cov_ls]
+
+forest_W <- 
+  regression_forest(
+    pred_X, T, 
+    clusters = cl_var,
+    num.trees = 4000 
+    )
 W_hat <- predict(forest_W)$predictions
 
-forest_Y <- regression_forest(X, Y, num.trees = 4000, clusters = cl_var)
+
+forest_Y <- 
+  regression_forest(
+    pred_X, Y,
+    clusters = cl_var,
+    num.trees = 4000)
 Y_hat <- predict(forest_Y)$predictions
+sqrt(mean((Y - Y_hat)^2))
+
+
 
 cf_raw <- causal_forest(
   X=X,
@@ -209,6 +314,7 @@ cf_raw <- causal_forest(
 
 varimp = variable_importance(cf_raw)
 selected_vars = which(varimp > mean (varimp))
+# selected_vars = which(varimp/mean(varimp) > 0.8)
 se_cov <- data[,cov_ls[selected_vars], with=FALSE]
 
 vis_cf_raw <- gen_impact_viz(
@@ -229,9 +335,9 @@ cf_res <- causal_forest(
   Y.hat = Y_hat, 
   W.hat = W_hat,
   clusters = cl_var,
-  sample.fraction = 0.4,
-  num.trees = 4000
-  # tune.parameters = "all",
+  # sample.fraction = 0.4,
+  num.trees = 4000,
+  tune.parameters = "all",
   # tune.parameters = c(""),
 )
 
