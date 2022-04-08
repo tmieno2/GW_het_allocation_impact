@@ -42,30 +42,43 @@ ssurgo_dt <- readRDS(here("Shared/Data/WaterAnalysis/ssurgo_ready_new.rds"))
 #' # Create new regression data
 # /*=================================================*/
 
-# === Variables to keep in the new regression data=== #
+# === Variables to be kept for the new regression data=== #
 var_ls <- c(
+	# --- ID --- #
 	"wellid",
+	"ownerid",
+	"lastname",
+	"firstname",
+	"wellstatusid",
 	"nrdname",
 	"year",
-	"trs", # index for clustering,  
-	"tr", # index for clustering, 
+	"county", 
+  	"longdd", "latdd",
+	"twnid", "rngid", "rngdir", "section", "trs", "tr", 
+	# --- well characteristics --- #
+	"swl",
+	"pwl",
+	"totaldepth",
+	"pumprate",
+	"volaf",
+	"i.acres",
+	"acres",
+	# --- main variables --- #
 	"treat1e", # treatment indicator for phase1: LR east vs TB (2007)
 	"treat1w", # treatment indicator for phase1: LR west vs TB (2007 - 2008)
 	"treat2", # treatment indicator for phase2: LR vs TB (2008 - 2015)
-	"usage", # dependent variable
-	"longdd", "latdd",
-	"twnid", "rngid", "rngdir", "section"
+	"usage"
 	)
 
 # /*---- check ----*/
 # temp <- data_w_LR_TB[, ..var_ls]
 # sapply(temp, function(x) any(is.na(x)))
-# So, this means that for some wells in some years, "usage" is missing
+# Some wells has missing values in "usage".
 
 
 sub_data_w_LR_TB <- data_w_LR_TB[, ..var_ls] %>%
 	# remove rows where usage is missing
-	na.omit()
+	na.omit(., cols = "usage")
 
 
 # /*===== merge source data with weather and soil data =====*/
