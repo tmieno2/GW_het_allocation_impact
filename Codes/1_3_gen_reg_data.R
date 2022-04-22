@@ -54,7 +54,7 @@ var_ls <- c(
 	"year",
 	"county", 
   	"longdd", "latdd",
-	"twnid", "rngid", "rngdir", "section", "trs", "tr", 
+	"cntyname","twnid", "rngid", "rngdir", "section", "trs", "tr", "in_east", "in_west",
 	# --- well characteristics --- #
 	"swl",
 	"pwl",
@@ -95,7 +95,10 @@ saveRDS(comp_reg_dt, here("Shared/Data/WaterAnalysis/comp_reg_dt.rds"))
 
 
 
-
+#' Question"
+#' useid" "I" "S" "O" "E"
+#' wellstatusid: "A" "X" "I"
+#' replacement
 
 
 

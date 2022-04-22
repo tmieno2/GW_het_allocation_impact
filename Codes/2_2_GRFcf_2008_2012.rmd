@@ -113,7 +113,7 @@ agg_reg_data <-
 
 ---
 
-# Well-year level Data
+# Year-Field level Data
 
 ```{r}
 # /*===== control variables =====*/
@@ -170,7 +170,7 @@ vis_cf_raw
 
 ---
 
-# Well level Data
+# Field level Data
 
 ## Sum
 

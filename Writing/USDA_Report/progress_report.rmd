@@ -67,7 +67,8 @@ library(rattle)
 
 + Results suggest that the impact is heterogeneous depending on in-season total precipitation. Farmers in regions where precipitation is low are more greatly affected by the allocation limits as compared to regions where precipitation is high. 
 
-+ This implies that LR may be able to enhance farming profitability by devising spatially heterogeneous allocation limits within the NRD with increased (decreased) allocation limits based on spatial gradients in precipitation, while maintaining the same level of overall groundwater use as the current uniform allocation limit design.
++ This implies that LR may be able to enhance farming profit by devising allocation limits within the NRD that are increased (or decreased) based on spatial gradients in precipitation, while maintaining the same level of overall groundwater use as the current uniform allocation limit design.
+
 
 
 # Data
@@ -108,7 +109,9 @@ library(rattle)
 
 # Preliminary Findings
 + Figure \@ref(fig:vis-cf-res) shows the estimated treatment effects (in inches) with the corresponding histogram for some internally selected variables. Among all the covariates, water holding capacity (i.e., awc_r), in-season total reference grass evaportranspiration (i.e., pet_in), and in-season total precipitation were selected as variables affecting treatment effect heterogeneity by our CF model. 
+
 + The result suggests that the treatment effects significantly vary by in-season total precipitation. For example, in areas in which in-season total precipitation was high, say 20 inches, a farmer reduced his water usage by about 2.2 acre-inches on average than what would be without allocation limit. Meanwhile, the areas in which in-season total precipitation was low, say 12 inches, a farmer reduced his water usage by about 4 acre-inches on average than the counterfactual outcome. 
+
 + This means that the current uniform allocation limit design may be more binding in areas with less precipitation.
 
 

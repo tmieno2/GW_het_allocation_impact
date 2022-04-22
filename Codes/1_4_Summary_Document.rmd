@@ -60,7 +60,7 @@ library(officer)
 library(officedown)
 ```
 
-# Object
+# Objective
 + Summarize what I did for data downloading 
 
 
@@ -152,7 +152,10 @@ well_buffer_sp <- as(well_buffer_sf, "Spatial")
 
 ```{r}
 get_ssurgo_props <- function(field, vars, summarize = FALSE) {
-  # field=unique_well_sp; vars = c("sandtotal_r", "claytotal_r")
+  field = as(filter(well_buffer_sf, wellid==112576), "Spatial")
+  # field= as(well_buffer_sf[5,], "Spatial")
+  # vars = "sandtotal_r"
+  # summarize = TRUE
   # Get SSURGO mukeys for polygon intersection
   ssurgo_geom <-
     SDA_spatialQuery(
@@ -161,11 +164,18 @@ get_ssurgo_props <- function(field, vars, summarize = FALSE) {
       db = "SSURGO",
       geomIntersection = TRUE
     ) %>%
-    st_as_sf()
-    mutate(
-      area = as.numeric(st_area(.)),
+    st_as_sf() %>%
+    dplyr::mutate(
+      # area = as.numeric(st_area(.)), #this causes an error for some polygons
+      area = .$area_ac,
       area_weight = area / sum(area)
     )
+
+
+  # --- check --- #
+  # ggplot()+geom_sf(data=ssurgo_geom, aes(fill=factor(mukey)))
+  # Looks like, in one buffer (surrounding a well), there are multiple polygon data where each of them are associated with a unique mukey 
+  # `area_weight` indicates a portion of each polygon to entire butter
 
   # Get soil properties for each mukey
   mukeydata <-
@@ -184,7 +194,7 @@ get_ssurgo_props <- function(field, vars, summarize = FALSE) {
       ssurgo_data %>%
       data.table() %>%
       .[,
-        lapply(.SD, weighted.mean, w = area_weight),
+        lapply(.SD, weighted.mean, w = area_weight, na.rm = TRUE),
         .SDcols = vars
       ]
     return(ssurgo_data_sum)
@@ -222,6 +232,43 @@ ggplot()+
   geom_sf(data=ssurgo_geom, aes(fill=factor(mukey)), color="blue", alpha=0.5)+
   geom_sf(data= well_sf[5,], fill=NA)
 ```
+
+
+### Download SSURGO data
++ This is the code I used to download SSURGO data for my data. 
+
+```{r, eval = F}
+
+# === Target variables === #
+soil_var <- c(
+  # --- "Horizon" --- #
+  "sandtotal_r", # a fraction of sand (0.05mm to 2.0mm)(%)
+  "claytotal_r", # a fraction of clay (%)
+  "silttotal_r", # a faction of silt (%) 
+  "ksat_r", # hydraulic conductivity (um/m)
+  "awc_r", # available water capacity (cm/cm)
+  # --- "Component" --- #
+  "slope_r" # The difference in elevation between two points, expressed as a percentage of the distance between those points. (SSM), "component"
+  )
+
+# each filed (buffer) data is passed on get_ssurgo_props()
+res_ssurgo <- lapply(
+  seq_len(nrow(well_buffer_sp)), 
+  function(x) {
+      print(paste0("working on wellid: ", well_buffer_sp[x, ]$wellid, " field"))
+    # x=1
+      get_ssurgo_props(
+        field = well_buffer_sp[x,],
+        vars = soil_var,
+        summarize = TRUE
+      ) %>%
+      .[, wellid := well_buffer_sp[x, ]$wellid]
+  }) %>%
+  bind_rows()
+
+```
+
+
 
 
 

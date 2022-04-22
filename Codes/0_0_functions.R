@@ -95,9 +95,6 @@ get_in_values_gridMET <- function(var_name, year){
 
 
 get_ssurgo_props <- function(field, vars, summarize = FALSE) {
-  # field = as(filter(well_buffer_sf, wellid==112576), "Spatial")
-  # field = as(filter(well_buffer_sf, wellid==112591), "Spatial")
-  # field = as(filter(well_buffer_sf, wellid==231010), "Spatial")
   # field= as(well_buffer_sf[5,], "Spatial")
   # vars = soil_var
   # summarize = TRUE
@@ -115,7 +112,6 @@ get_ssurgo_props <- function(field, vars, summarize = FALSE) {
       area = .$area_ac,
       area_weight = area / sum(area)
     )
-
 
   # --- check --- #
   # ggplot()+geom_sf(data=ssurgo_geom, aes(fill=factor(mukey)))
@@ -147,6 +143,7 @@ get_ssurgo_props <- function(field, vars, summarize = FALSE) {
   } else {
     return(ssurgo_data)
   }
+
 }
 
 
