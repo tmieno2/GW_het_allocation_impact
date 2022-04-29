@@ -1,0 +1,91 @@
+---
+title: "How do groundwater allocation limits affect farmers’ groundwater use differently?"
+author: Taro Mieno^[Department of Agricultural Economics, University of Nebraska-Lincoln], Shunkei Kakimoto^[Department of Agricultural Economics, University of Nebraska-Lincoln], and Karina Schoengold^[Department of Agricultural Economics, University of Nebraska-Lincoln]
+output:
+  bookdown::word_document2:
+    fig_caption: yes
+    number_sections: yes
+    global_numbering: true
+    reference_docx: word_template.docx
+    # reference_docx: word_template_format.docx
+    # pandoc_args: ["-Fpandoc-crossref"]
+bibliography: temp.bib
+eqnPrefix: 
+      - "Eq"
+---
+
+```{r echo = F, include = FALSE, cache = F}
+library(knitr)
+library(here)
+here::i_am("GitControlled/Writing/NE_WaterConference/abstract.rmd")
+# opts_knit$set(root.dir = here())
+
+options(htmltools.dir.version = FALSE)
+options(knitr.duplicate.label = "allow")
+
+opts_chunk$set(
+  fig.align = "center",
+  fig.retina = 5,
+  warning = F,
+  message = F,
+  cache = F,
+  echo = F
+)
+```
+
+```{r, cache = FALSE}
+# === packages ===#
+library(tidyverse)
+library(data.table)
+library(sf)
+library(png)
+library(RColorBrewer)
+library(patchwork)
+library(plotly)
+library(magrittr)
+library(ggplot2)
+library(viridis)
+library(tmap)
+library(ggthemes)
+library(mgcv)
+library(ggpubr)
+library(flextable)
+library(officer)
+library(officedown)
+library(modelsummary)
+library(raster)
+library(bookdown)
+library(png)
+library(grid)
+library(causalTree)
+library(rpart)
+library(rattle)
+```
+
+
+# Abstract:
+
+Groundwater levels in many parts of the world are declining, leading to increased use of policies designed to reduce or stop the decline. This paper examines the impact of locally developed regulations on the use of groundwater. The study uses well-level groundwater extraction data from two of Nebraska’s Natural Resources Districts (NRDs) belonging to the Republican River Basin, where each district has autonomy in the type of regulation used. This study examines the heterogeneous impact of groundwater allocation limit placed on the Lower Republican River Basin. The results show that the impact is heterogeneous depending on weather condition, especially in-season total precipitation, while soil characteristics are not statistically significant drivers of the heterogeneity. Specifically, farmers in regions where precipitation is low are more greatly affected by the regulations as compared to regions where precipitation is high. This suggests that NRDs can improve economic efficiency of their groundwater allocation limits by varying the allocation amount by weather.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -120,7 +120,6 @@ nrd_boud <-
 ggplot() +
   geom_boxplot(data = reg_data_all, aes(x=year, y= usage, group= interaction(nrdname, year), fill= nrdname)) +
   geom_hline(yintercept = 9, color="red") +
-  ggtitle("Proportion of farmers who used more than 9 inches-acre") +
   theme_figure
 ```
 
@@ -174,7 +173,7 @@ ggplot(ch_reg_data)+
 <br>
 
 + (3) **Pooling Arrangement**:
-  * An arrangement approced by the District by **a single landowner** to combine more than one tract of land under common ground water among the total combined Certified Irrigated Acres identified in the arrangement. 
+  * An arrangement approved by the District by **a single landowner** to combine more than one tract of land under common ground water among the total combined Certified Irrigated Acres identified in the arrangement. 
     - For example, suppose a farmer has multiple farmlands (field A :10 acres and field B: 20 acres) which are admitted as Certified Irrigated Acres. His total groundwater allocation is 270 inches per year in total ((10 acres + 20 acres) * 9 acre-inches per year= 270), and he can allocate this amount of groundwater to field A and field B freely. 
 
 <br>

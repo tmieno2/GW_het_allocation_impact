@@ -274,6 +274,35 @@ vis_cf_raw <- gen_impact_viz(
   var_ls_int = cov_ls
 )
 vis_cf_raw
+
+#/*--------------------------------*/
+#' ## 2nd CF
+#/*--------------------------------*/
+cf_res <- causal_forest(
+  X=se_cov,
+  Y=Y,
+  W=T, 
+  Y.hat = Y_hat, 
+  W.hat = W_hat,
+  clusters = cl_var,
+  # sample.fraction = 0.4,
+  num.trees = 4000,
+  tune.parameters = "all",
+  # tune.parameters = c(""),
+)
+
+#/*--------------------------------*/
+#' ## Visualization
+#/*--------------------------------*/
+vis_cf_res <-
+  gen_impact_viz(
+  cf_res= cf_res,
+  data_base=data,
+  treat_var='treat2',
+  var_ls= cov_ls[selected_vars],
+  var_ls_int = cov_ls[selected_vars]
+)
+vis_cf_res
 ```
 
 

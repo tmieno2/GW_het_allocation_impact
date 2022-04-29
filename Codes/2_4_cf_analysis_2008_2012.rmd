@@ -97,8 +97,8 @@ reg_data_all <-
   here("Shared/Data/WaterAnalysis/comp_reg_dt.rds") %>%
   readRDS() %>%
   .[,owner_name := paste0(firstname, "_", lastname)] %>%
-  .[year %in% 2008:2015 & usage <= 45] %>%
-  east_or_west[., on = "wellid"]
+  .[year %in% 2008:2015 & usage <= 45]
+  # east_or_west[., on = "wellid"]
 
 
 # === Data period: 2008-2012 === #
@@ -114,7 +114,7 @@ reg_data <-
 ## Identify landowners in LR who have farmlands outside of the buffer
 
 ```{r}
-# === All Well Data === #
+# === All Well Data (Original data)=== #
 ir_data <- 
   here('Shared/Data/ir_reg.rds') %>%
   readRDS() %>%
@@ -132,6 +132,7 @@ ggplot() +
 
 
 ```{r, echo=F}
+# Don't need to run
 # total number of farmers:770
 # reg_data$owner_name %>% unique() %>% length()
 
@@ -194,6 +195,7 @@ reg_data <-
 
 
 ```{r, echo=F, eval=F}
+# Don't need to run
 # total number of farmers in the data: 832
 reg_data$nrd_owner_name %>% unique() %>% length()
 # LR: 387
@@ -211,6 +213,7 @@ reg_data[nrdname=="Tri-Basin", nrd_owner_name] %>% unique() %>% length()
 <br>
 
 ```{r}
+# Don't need to run
 reg_data %>%
   unique(., by="nrd_owner_name") %>%
   .[, .N, by=.(nrdname, both_InOut_5mi_LR) ] %>%
@@ -230,18 +233,19 @@ reg_data %>%
 ## Flow
 + Use the new criteria `both_InOut_5mi_LR` to filter the data. 
 + For LR data, aggregate the annual data by field to annual data by owner. 
-+ For TB data, field-level annual data is used. 
++ For TB data, field-level annual data is used. (Aggregation is not necessary)
 
 
 ```{r}
+# Remove owners who have farmlands in both inside and outside of the buffer
 mod_reg_data <- 
   reg_data[both_InOut_5mi_LR==0,]
 
-# - TB - #
+# - Data on TB - #
 reg_data_TB <- 
   mod_reg_data[nrdname=="Tri-Basin",]
 
-# - LR - #
+# - Data on LR - #
 reg_data_LR <- 
   mod_reg_data[nrdname=="Lower Republican",]
 ```
@@ -254,6 +258,7 @@ reg_data_LR <-
 
 
 ```{r}
+# Don't need to run
 # Ideally, a single farmers have only one single "tr". Check how many of farmers whose farmland is scattered across multiple "tr"
 
 tr_cl <- 
@@ -279,6 +284,7 @@ tr_cl <-
 <br>
 
 ```{r}
+# Don't need to run
 county_cl <- 
   reg_data_LR %>%
   distinct(nrd_owner_name, county) %>%
@@ -296,6 +302,7 @@ county_cl[total>1, ] %>% print()
 
 
 ```{r}
+# Don't need to run
 ne_county_sf <-  tigris::counties("Nebraska", cb = TRUE, resolution="20m", progress_bar = FALSE) %>%
   dplyr::select(COUNTYFP, NAME) %>%
   filter(NAME %in% str_to_sentence(unique(mod_reg_data$county)))%>%
@@ -369,10 +376,65 @@ reg_data_LR2 <-
 + Now, each farmers in LR have farmland in a single county
 
 
+```{r, echo=F, eval=F}
+# For the future, here I modify county data for TB data as well
+
+county_cl_TB <- 
+  reg_data_TB %>%
+  distinct(nrd_owner_name, county) %>%
+  .[, index := 1,] %>%
+  dcast(.,nrd_owner_name ~ county, value.var = "index") %>%
+  replace(is.na(.), 0) %>%
+  .[, total := rowSums(.SD), by = nrd_owner_name]
+
+# county_cl[total>1, nrd_owner_name]
+county_cl_TB[total>1, ] %>% print()
+
+list_name <- list(
+  county_cl_TB[total>1, nrd_owner_name][1:5],
+  county_cl_TB[total>1, nrd_owner_name][6:10],
+  county_cl_TB[total>1, nrd_owner_name][11:15],
+  county_cl_TB[total>1, nrd_owner_name][16:20],
+  county_cl_TB[total>1, nrd_owner_name][21:22]
+  )
+
+county_cl_sf_TB <-
+  reg_data_TB %>%
+  .[nrd_owner_name %in% county_cl_TB[total>1, nrd_owner_name],] %>%
+  distinct(nrd_owner_name, longdd, latdd) %>%
+  st_as_sf(., coords = c("longdd","latdd"), crs = 4269)
+
+ggplot()+
+  geom_sf(data=ne_county_sf, aes(fill=NAME), alpha=0.6) +
+  geom_sf(data=nrd_boud, color="blue", fill=NA) +  
+  geom_sf(data= filter(county_cl_sf_TB, nrd_owner_name %in% list_name[[5]]), size=1)+
+  facet_wrap(~nrd_owner_name, ncol=2)
+
+reg_data_TB$county %>% unique()
+
+
+PHELPS <- c("Tri-Basin Bert Jose_Cueva Trust", "Tri-Basin Bryan E & Jean A_Nitchie", "Tri-Basin Clyde & Jerry_Lueking", "Tri-Basin Evelyn M_Sundquist Family Tr", "Tri-Basin G B_Bergstrom Farms Inc", "Tri-Basin Gary & Patricia_Gray", "Tri-Basin James B & Angela D_Palmer", "Tri-Basin Joe M_Strong", "Tri-Basin John_Stadler", "Tri-Basin Katherine_Bergstrom", "Tri-Basin Nordon E & Mary Ann_Woollen Revocable Trusts", "Tri-Basin _Kuck Ranch Ltd", "Tri-Basin _N & M Woollen Farms Ltd")
+
+GOSPER <- c("Tri-Basin Clyde & Jerry_Lueking", "Tri-Basin _Frerichs Kleinschmidt Woodbridge & Swan", "Tri-Basin _Wasson Farms Ltd")
+
+KEARNEY <- c("Tri-Basin Lamonte_Woollen", "Tri-Basin Lee A & Grace E_Grove", "Tri-Basin Mary E_Wendell", "Tri-Basin Mary_Lanning Hospital Trust", "Tri-Basin Shawn E & Cynthia J_Woollen Revocable Trusts", "Tri-Basin _Babcock Trusts", "Tri-Basin _United States Fish & Wildlife Service")
+
+
+reg_data_TB2 <- 
+  reg_data_TB %>%
+  .[,county_fix := case_when(
+    nrd_owner_name %in% PHELPS ~ "PHELPS",
+    nrd_owner_name %in% GOSPER ~ "GOSPER",
+    nrd_owner_name %in% KEARNEY ~ "KEARNEY",
+    TRUE ~ county
+  )]
+
+```
+
 ## Data aggregation by taking mean values
 
 ```{r}
-reg_data_LR_mean_final <- 
+reg_data_LR_mean <- 
   reg_data_LR2 %>%
     .[,.(
     usage = mean(usage),
@@ -394,20 +456,18 @@ reg_data_LR_mean_final <-
 
 reg_data_TB_final <-
   reg_data_TB %>%
-  .[, names(reg_data_LR_mean_final) %>% .[-length(.)], with=FALSE] %>%
+  .[, names(reg_data_LR_mean) %>% .[-length(.)], with=FALSE] %>%
   .[,county_year := paste0(county, "_", year)]
 
 
-reg_data_final <- rbind(reg_data_LR_mean_final, reg_data_TB_final)
+reg_data_final <- rbind(reg_data_LR_mean, reg_data_TB_final)
 
-
-hist(reg_data_LR_mean_final$usage)
+# hist(reg_data_LR_mean$usage)
 ```
 
 ---
 
 # CF analysis
-
 
 ## No clustering
 
@@ -453,10 +513,10 @@ cf_raw <- causal_forest(
   num.trees = 4000
 )
 
-# varimp = variable_importance(cf_raw)
-# selected_vars = which(varimp > mean (varimp))
-# # selected_vars = which(varimp/mean(varimp) > 0.2)
-# se_cov <- data[,cov_ls[selected_vars], with=FALSE]
+varimp = variable_importance(cf_raw)
+selected_vars = which(varimp > mean (varimp))
+# selected_vars = which(varimp/mean(varimp) > 0.2)
+se_cov <- data[,cov_ls[selected_vars], with=FALSE]
 
 vis_cf_raw <- gen_impact_viz(
   cf_res= cf_raw,
@@ -508,7 +568,431 @@ cf_raw_cl <- causal_forest(
 varimp = variable_importance(cf_raw_cl)
 selected_vars = which(varimp > mean (varimp))
 # selected_vars = which(varimp/mean(varimp) > 0.2)
-# se_cov <- data[,cov_ls[selected_vars], with=FALSE]
+se_cov <- data[,cov_ls[selected_vars], with=FALSE]
+
+vis_cf_raw_cl <- gen_impact_viz(
+  cf_res= cf_raw_cl,
+  data_base=data,
+  treat_var='treat2',
+  var_ls= cov_ls,
+  var_ls_int = cov_ls
+)
+```
+
+### 1st CF
+```{r}
+vis_cf_raw_cl
+```
+
+```{r, echo=F}
+
+#/*--------------------------------*/
+#' ## 2nd CF
+#/*--------------------------------*/
+cf_res <- causal_forest(
+  X=se_cov,
+  Y=Y,
+  W=T, 
+  Y.hat = Y_hat, 
+  W.hat = W_hat,
+  clusters = cl_var,
+  # sample.fraction = 0.4,
+  num.trees = 4000,
+  tune.parameters = "all",
+  # tune.parameters = c(""),
+)
+
+#/*--------------------------------*/
+#' ## Visualization
+#/*--------------------------------*/
+vis_cf_res <-
+  gen_impact_viz(
+  cf_res= cf_res,
+  data_base=data,
+  treat_var='treat2',
+  var_ls= cov_ls[selected_vars],
+  var_ls_int = cov_ls[selected_vars]
+)
+# vis_cf_res
+```
+
+### 2nd CF
+```{r}
+vis_cf_res
+```
+
+
+## Next step
+
++ Below is the what came up in my mind:  
++ The `usage` is the average amount of water applied to the field (unit is inches). 
++ Then, I took a simple average of `usage` by owner
++ So, I'm taking average of average. This could be a problematic if the sizes of farmlands belonging to the same owner are different
++ For example, suppose owner A has two fields:
+  * Field 1: area 200 acre, usage 140 acre-inch, so 0.7 inch
+  * Field 2: area 100 acre, water use 50 acre-inch, so 0.2 inch 
+  * Simple average of usage is $\frac{0.7+0.2}{2}=0.45$
+  * Using a weighted average, $\frac{200}{200+100}\times0.7 + \frac{100}{200+100}\times0.5=\frac{140+50}{300}=0.63 > 0.45$
+  
+<br>
+
++ So I needed to calculate with weighted average (weighted by `acres`). 
+
+
+
+## Number of owners grouped by number of farmlands owned (in LR)
+
+
+```{r, echo=F}
+reg_data_LR2
+
+ownr_distinct <- 
+  distinct(reg_data_LR2, longdd, latdd, .keep_all = TRUE) %>%
+  data.table() %>%
+  .[, field_id_inownr := paste0("field",seq_len(.N)), by = owner_name]
+
+# ownr_distinct$nrd_owner_name %>% unique() %>% length()
+
+# count how many of field each farmer has
+cnt_by_ownr <-  
+  ownr_distinct %>%
+  .[, .(num_fields = .N), by = .(nrd_owner_name)]
+
+# count the number of farmers by the number of fields they have
+cnt_by_ownr_smrry <- 
+  cnt_by_ownr %>%
+  .[, .(num_farmers = .N), by = num_fields] %>%
+  .[order(num_fields)]
+
+cnt_by_ownr_smrry%>%
+  gt() %>%
+  tab_header(title = md("Landowners categorized by the number <br> of farmlands owned")) %>%
+  cols_align(align = "left", columns = "num_fields")
+```
+
++ Total number of landowners in LR is `r ownr_distinct$nrd_owner_name %>% unique() %>% length()`
++ Out of this number of landowners, `r ownr_distinct$nrd_owner_name %>% unique() %>% length() - cnt_by_ownr_smrry[num_fields==1, num_farmers]` of landowners own more than one farmlands. 
+
+
+
+# Aggregate well-level data on LR to owner-level data correctly  (~4/28)
+
+## MEMO for myself:
++ `usage:=volaf*12/acres`
+  * `volaf`: is a measurement of the volume of water used on the farmland (unit: acre-foot)
+  * `volaf*12`: the measurement unit acre-inches
+    - 1 acre-foot = 12 acre-inches
+  * So, by dividing `volaf*12` by `acres`, it becomes volume of water inches (per acre) (acre-inches by acre)
+    - the unit of `usage` is inches
+
+
+```{r, echo=F, eval=F}
+ggplot(reg_data_LR2) +
+  geom_density(aes(x=volaf*12))
+```
+
+## Correct way of aggregation by owner
++ an average water usage by owner = (sum of `volaf*12`)/(sum of `acres`)
+
+<br>
+
++ The original data (`ir_reg.rds`) has two columns acres of fields : `i.acres` and `acres`.
++ Check which is the correct one:
+
+```{r}
+temp <- reg_data_LR2[1]
+temp$usage == temp$volaf*12/temp$i.acres
+temp$usage == temp$volaf*12/temp$acres
+```
++ `acres` is the correct one. 
+
+<br>
+
++ Aggregate data by year and owner in the below. 
+
+```{r}
+cov_ls <- c(
+  # --- weather --- #
+  "pr_in","pet_in",
+  # --- soil --- #
+  "silttotal_r", "claytotal_r", "slope_r", "ksat_r", "awc_r"
+  )
+
+var_ls <- c("usage", "treat2", cov_ls)
+
+# === LR data === #
+reg_data_LR_mean <- 
+  reg_data_LR2 %>%
+    .[,.(
+    usage_avg = mean(usage),
+    usage = sum(volaf*12)/sum(acres),
+    treat2 = mean(treat2),
+    # --- soil --- #
+    silttotal_r = mean(silttotal_r),
+    claytotal_r = mean(claytotal_r),
+    slope_r = mean(slope_r),
+    ksat_r = mean(ksat_r),
+    awc_r = mean(awc_r),
+    # --- weather --- #    
+    pr_in = mean(pr_in),
+    pet_in = mean(pet_in),
+    gdd_in = mean(gdd_in),
+    # --- tr --- #
+    county = unique(county_fix)
+    ), by = .(nrd_owner_name, year)] %>%
+    .[,county_year := paste0(county, "_", year)]
+
+# === TB data === #
+reg_data_TB_final <-
+  reg_data_TB %>%
+  .[,county_year := paste0(county, "_", year)]
+
+# === Merge LR and TB data === #
+reg_data_final2 <- 
+  rbind(
+    reg_data_LR_mean[, c(var_ls, "county_year"), with=FALSE],
+    reg_data_TB_final[, c(var_ls, "county_year"),
+     with=FALSE]
+     )
+```
+
+## Compare `usage_avg = mean(usage)` and `usage = sum(volaf*12)/sum(acres)`
+
+```{r, echo=F}
+ggplot(reg_data_LR_mean)+
+  geom_histogram(aes(x=usage_avg), fill="blue", alpha=0.7, bins = 50)+
+  geom_histogram(aes(x=usage), fill="green", alpha=0.6, bins = 50) +
+  # geom_histogram(data = reg_data_TB,  aes(x=usage), fill="green", alpha=0.6) +
+  facet_wrap(year~., ncol=2)
+```
++ Green is `sum(volaf*12)/sum(acres)` and Blue is `mean(usage)`
++ Overall,  `sum(volaf*12)/sum(acres)` is slightly smaller than `mean(usage)`
+
+<br>
+
+
+
+```{r, echo=F, eval=F}
+summary(reg_data_LR_mean$usage_avg)
+summary(reg_data_LR_mean$usage)
+# /*===== Boxplot =====*/
+vis_dt <- rbind(
+    reg_data_LR_mean[, c(var_ls, "year"), with=FALSE],
+    reg_data_TB_final[, c(var_ls, "year"),
+     with=FALSE]
+     )
+
+ggplot() +
+  geom_boxplot(data = vis_dt, aes(x=year, y= usage, group= interaction(factor(treat2), year), fill= factor(treat2))) +
+  geom_hline(yintercept = 9, color="red")
+```
+
+
+
+
+```{r, eval=F, echo=F}
+# reg_data_LR_mean %>%
+#   .[nrd_owner_name=="Lower Republican David_Black",]
+
+temp <- reg_data_LR2 %>%
+  .[nrd_owner_name=="Lower Republican David_Black", .(ID, year, volaf, i.acres, acres, usage)] %>%
+  .[, usage1 := volaf*12/acres] %>%
+  .[, usage2 := volaf*12/i.acres] %>%
+  .[, mean_usage1 :=  mean(usage1), by=year] %>%
+  .[, mean_usage2 :=  mean(usage2), by=year] %>%
+  .[, w_mean_usage1 :=  sum(volaf*12)/sum(acres), by=year] %>%
+  .[, w_mean_usage2 :=  sum(volaf*12)/sum(i.acres), by=year]
+
+# reg_data_LR2 %>%
+#   .[nrd_owner_name=="Lower Republican David_Black", .(ID, year, volaf, acres, usage)] %>%
+#   gt()
+```
+
+
+
+## CF analysis
+
+```{r}
+data <- reg_data_final2
+Y <- data[, usage]
+T <- data[, treat2]
+X <- data[, ..cov_ls]
+cl_var <- data[, county_year] %>% factor()
+
+#/*--------------------------------*/
+#' ## 1st CF
+#/*--------------------------------*/
+set.seed(23456)
+
+forest_W_cl <- regression_forest(
+  X, T, 
+  clusters = cl_var,
+  num.trees = 4000)
+W_hat <- predict(forest_W_cl)$predictions
+
+forest_Y_cl <- regression_forest(
+  X, Y, 
+  clusters = cl_var,
+  num.trees = 4000)
+Y_hat <- predict(forest_Y_cl)$predictions
+
+cf_raw_cl <- causal_forest(
+  X=X,
+  Y=Y,
+  W=T, 
+  Y.hat = Y_hat, 
+  W.hat = W_hat,
+  clusters = cl_var,
+  tune.parameters = "all",
+  num.trees = 4000
+)
+
+varimp = variable_importance(cf_raw_cl)
+selected_vars = which(varimp > mean (varimp))
+# selected_vars = which(varimp/mean(varimp) > 0.2)
+se_cov <- data[,cov_ls[selected_vars], with=FALSE]
+
+vis_cf_raw_cl <- gen_impact_viz(
+  cf_res= cf_raw_cl,
+  data_base=data,
+  treat_var='treat2',
+  var_ls= cov_ls,
+  var_ls_int = cov_ls
+)
+# vis_cf_raw_cl
+
+#/*--------------------------------*/
+#' ## 2nd CF
+#/*--------------------------------*/
+cf_res <- causal_forest(
+  X=se_cov,
+  Y=Y,
+  W=T, 
+  Y.hat = Y_hat, 
+  W.hat = W_hat,
+  clusters = cl_var,
+  # sample.fraction = 0.4,
+  num.trees = 4000,
+  tune.parameters = "all",
+  # tune.parameters = c(""),
+)
+
+#/*--------------------------------*/
+#' ## Visualization
+#/*--------------------------------*/
+vis_cf_res <-
+  gen_impact_viz(
+  cf_res= cf_res,
+  data_base=data,
+  treat_var='treat2',
+  var_ls= cov_ls[selected_vars],
+  var_ls_int = cov_ls[selected_vars]
+)
+# vis_cf_res
+```
+
+### 1st CF
+
+```{r}
+vis_cf_raw_cl
+```
+
+### 2nd CF
+```{r}
+vis_cf_res
+```
+
+
+
+
+```{r, echo=F, eval=F}
+# Cross-sectional data (the correctional unit is owner)
+
+cov_ls <- c(
+  # --- weather --- #
+  "pr_in","pet_in",
+  # --- soil --- #
+  "silttotal_r", "claytotal_r", "slope_r", "ksat_r", "awc_r"
+  )
+
+var_ls <- c("usage", "treat2", cov_ls)
+
+
+temp <- 
+  reg_data[both_InOut_5mi_LR==0,] %>%
+  .[,county_fix := case_when(
+    # - first group - #
+    nrd_owner_name == "Lower Republican John & Ingrid_Tangeman" ~ "FURNAS",
+    nrd_owner_name == "Lower Republican David_Black" ~ "HARLAN",
+    # - second group  - #
+    nrd_owner_name == "Lower Republican _Franklin County Farm" ~ "FRANKLIN",
+    nrd_owner_name == "Lower Republican Wayne & Linda_Brummer" ~ "HARLAN",
+    nrd_owner_name %in% PHELPS ~ "PHELPS",
+    nrd_owner_name %in% GOSPER ~ "GOSPER",
+    nrd_owner_name %in% KEARNEY ~ "KEARNEY",
+    TRUE ~ county
+  )]
+
+
+# === Aggregate by nrd_owner_name === #
+reg_data_LR_cross <- 
+  # remove tr!="5_22" 
+  temp[tr!="5_22",] %>%
+    .[,.(
+    usage = sum(volaf*12)/sum(acres),
+    treat2 = mean(treat2),
+    # --- soil --- #
+    silttotal_r = mean(silttotal_r),
+    claytotal_r = mean(claytotal_r),
+    slope_r = mean(slope_r),
+    ksat_r = mean(ksat_r),
+    awc_r = mean(awc_r),
+    # --- weather --- #    
+    pr_in = mean(pr_in),
+    pet_in = mean(pet_in),
+    gdd_in = mean(gdd_in),
+    # --- tr --- #
+    county = unique(county_fix)
+    ), by = .(nrd_owner_name)]
+
+data <- reg_data_LR_cross
+Y <- data[, usage]
+T <- data[, treat2]
+X <- data[, ..cov_ls]
+cl_var <- data[, county] %>% factor()
+
+#/*--------------------------------*/
+#' ## 1st CF
+#/*--------------------------------*/
+set.seed(23456)
+
+forest_W_cl <- regression_forest(
+  X, T, 
+  clusters = cl_var,
+  num.trees = 4000)
+W_hat <- predict(forest_W_cl)$predictions
+
+forest_Y_cl <- regression_forest(
+  X, Y, 
+  clusters = cl_var,
+  num.trees = 4000)
+Y_hat <- predict(forest_Y_cl)$predictions
+
+cf_raw_cl <- causal_forest(
+  X=X,
+  Y=Y,
+  W=T, 
+  Y.hat = Y_hat, 
+  W.hat = W_hat,
+  clusters = cl_var,
+  tune.parameters = "all",
+  num.trees = 4000
+)
+
+varimp = variable_importance(cf_raw_cl)
+selected_vars = which(varimp > mean (varimp))
+# selected_vars = which(varimp/mean(varimp) > 0.2)
+se_cov <- data[,cov_ls[selected_vars], with=FALSE]
 
 vis_cf_raw_cl <- gen_impact_viz(
   cf_res= cf_raw_cl,
@@ -518,30 +1002,33 @@ vis_cf_raw_cl <- gen_impact_viz(
   var_ls_int = cov_ls
 )
 vis_cf_raw_cl
+
+#/*--------------------------------*/
+#' ## 2nd CF
+#/*--------------------------------*/
+cf_res <- causal_forest(
+  X=se_cov,
+  Y=Y,
+  W=T, 
+  Y.hat = Y_hat, 
+  W.hat = W_hat,
+  clusters = cl_var,
+  # sample.fraction = 0.4,
+  num.trees = 4000,
+  tune.parameters = "all",
+  # tune.parameters = c(""),
+)
+
+#/*--------------------------------*/
+#' ## Visualization
+#/*--------------------------------*/
+vis_cf_res <-
+  gen_impact_viz(
+  cf_res= cf_res,
+  data_base=data,
+  treat_var='treat2',
+  var_ls= cov_ls[selected_vars],
+  var_ls_int = cov_ls[selected_vars]
+)
+vis_cf_res
 ```
-
-+ **Important variable:** 
-```{r}
-cov_ls[selected_vars]
-```
-
-# Next step
-<!-- + I think I figure out why we saw non-impact of precipitation when data is aggregated by owner (so each owner has only a single row data) -->
-+ The `usge` is the average of water use (acre-inch). 
-+ Then, I took a simple average of `usge` by owner
-+ So, I'm taking average of average. This could be a problematic if the sizes of farmland owned by the same owner are different because it means the both fields gets the same wight 
-+ For example, owner A has two fields:
-  * Field 1: area 200 acre, water use 140, so 0.7 acre inch usage
-  * Field 2: area 100 acre, water use 50, so 0.2 acre inch usage 
-  * Simple average of usage is $\frac{0.7+0.2}{2}=0.45$
-  * Using a weighted average, $\frac{200}{200+100}\times0.7 + \frac{100}{200+100}\times0.5=\frac{140+50}{300}=0.63 > 0.45$
-  
-<br>
-+ So I needed to calculate with weighted average (weighted by `acres`). 
-  + We have two `i.acres` and `acres` in the data 
-
-+ Need to have correct data. Can I reproduce the data from scratch?
-
-
-
-
