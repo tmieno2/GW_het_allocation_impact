@@ -70,7 +70,7 @@ get_in_values_gridMET <- function(var_name, year){
   ls_in_day <- seq(start_day, end_day) %>% as.character
 
   # /*===== Extract in-season daily weather values for site-level data (well)  ======*/
-  temp_res <- terra::extract(temp_gmet, vect(unique_well_sf)) %>%
+  temp_res <- terra::extract(temp_gmet, vect(unique_wells_loc_sf)) %>%
     data.table() %>%
     # --- select only data for in-season days --- #
     setnames(names(.)[-1], gsub(".*=", "", names(.)[-1])) %>%
@@ -296,8 +296,8 @@ get_impact <- function(cf_res, data_base, var_ls, var_name){
     setnames(var_name,'temp_var')
 
   #- define the range of `temp_var` values used for prediction -#
-  min_temp_var <- data_temp[,temp_var] %>% quantile(prob=0.025)
-  max_temp_var <- data_temp[,temp_var] %>% quantile(prob=0.90)
+  min_temp_var <- data_temp[,temp_var] %>% quantile(prob=0.05)
+  max_temp_var <- data_temp[,temp_var] %>% quantile(prob=0.95)
 
   #- create testing dataset -#
   	#- for all the other variables, the values are set as their mean values -#

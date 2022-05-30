@@ -1,0 +1,585 @@
+---
+title: "Report: Estimating the Impact of Groundwater Allocation Policies on Irrigation Behavior"
+author: "Shunkei Kakimoto"
+output:
+  # html_document:
+  bookdown::html_document2:
+    number_sections: yes
+    fig_caption: yes
+    tab_caption: yes
+    theme: flatly
+    toc_float: yes
+    toc: yes
+    toc_depth: 2
+geometry: margin=1in
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(here)
+here::i_am("GitControlled/Codes/2_3_DtAnalysis_2008_2012.rmd")
+
+opts_chunk$set(
+  echo = TRUE,
+  cache = FALSE,
+  message = FALSE,
+  warning = FALSE, 
+  cache.lazy = FALSE
+  #--- figure ---#
+  # dpi = 400,
+  # fig.width = 7.5,
+  # fig.height = 5,
+  # out.width = "750px",
+  # out.height = "500px"
+)
+
+# /*===== Basic Packages  =====*/
+# /*---- Data Wrangling ----*/
+library(data.table)
+library(tidyverse)
+library(DescTools)
+library(maps)
+
+# /*---- Visualization ----*/
+library(RColorBrewer)
+library(patchwork)
+library(ggplot2)
+library(ggthemes)
+library(ggpubr)
+library(viridis)
+library(grid)
+library(gridExtra)
+library(GGally)
+
+# /*---- Model Summary ----*/
+library(stats)
+library(modelsummary)
+library(flextable)
+library(officer)
+library(officedown)
+library(gt)
+```
+
+
+
+```{r, echo= F}
+theme_figure <-
+  theme_bw()  +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.ticks = element_blank(),
+  )
+
+theme_dist <-
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    strip.text.x = element_text(size = 12, face = "bold"),
+    strip.text.y = element_text(size = 12, face = "bold"),
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 12, face = "bold"),
+    legend.position = "bottom",
+    text = element_text(family = "Times New Roman")
+  )
+```
+
+```{r, results = "hide"}
+# === setup === #
+library(here)
+source(here("GitControlled/Codes/0_1_ls_packages.R"))
+source(here("GitControlled/Codes/0_0_functions.R"))
+
+# /*===== Data =====*/
+reg_data_all <- 
+  here("Shared/Data/WaterAnalysis/comp_reg_dt.rds") %>%
+  readRDS() %>%
+  .[in_5mi==1 & year %in% 2008:2015 & usage <= 45,] %>%
+  .[,tr_year:=factor(paste0(tr,year))]
+
+
+reg_data <- 
+  reg_data_all %>%
+  .[year %in% 2008:2012]
+
+# --- NRD boundary --- #
+nrd_boud <- 
+ here("Shared/Data/WaterAnalysis/NRD_bd/BND_NaturalResourceDistricts_DNR.shp") %>%
+ st_read() %>%
+ filter(NRD_Name %in% c("Lower Republican", "Tri-Basin")) %>%
+ st_transform(4269)
+```
+
+
+# Groundwater use in LR
+
+## Visualize annual water usage
+
+```{r boxplot-usage}
+# /*===== Boxplot =====*/
+ggplot() +
+  geom_boxplot(data = reg_data_all, aes(x=year, y= usage, group= interaction(nrdname, year), fill= nrdname)) +
+  geom_hline(yintercept = 9, color="red") +
+  theme_figure
+```
+
+<br>
+
+```{r}
+# /*===== How often producer in LR used more than 9 inches  =====*/
+ch_reg_data <- 
+  reg_data_all %>%
+  .[treat2==1,.(ID, year, usage)] %>%
+  .[,over_9 := ifelse(usage<=9, 0, 1)] %>%
+  .[, .(
+    num_obs = .N,
+    sum_over_9 = sum(over_9, na.rm=TRUE)
+    ), by = year] %>%
+  .[,prop_over_9 := sum_over_9/num_obs] %>%
+  .[order(year)]
+```
+
+```{r prop-overuse-LR}
+ggplot(ch_reg_data)+
+  geom_line(aes(x=year, y=prop_over_9)) +
+  ggtitle("Proportion of farmers who used more than 9 inches-acre") +
+  theme_figure
+```
+
++ In each year during the 2008-2012, some farmers (approximately 10% of total farmers) in LR used more than 9 inches groundwater.
++ In 2012, the median of water use in LR is `r median(reg_data_all[nrdname=="Lower Republican" & year == 2012, usage])`.
+  * How could this be possible? 
++ What are those outliers? 
+
+
+## LR: Overuse Penalties
++ source: "LRNRD Rules & Regulations":(https://www.lrnrd.org/index.php/component/content/article/7-info/32-lrnrd-rules-regulations-6-1-12)
+
++ criteria: 
+  * "A Landowner or Operator must have **a positive balance in his or her Allocation account before using water in any year of an Allocation Period**. The LRNRD shall notify Landowners and/or Operators anytime the balance of their Allocation goes below zero."
+
+
+<br>
+
+## Potential reasons for observing more than 9-inches usage.
++ (1) A farmer was allowed to allocate his total allocation limit (45 inches-acre) freely across years within an Allocation Period (i.e., Pooling). A Smart farmers would have saved some of his annual groundwater usage to prepare future weather uncertainty. 
+
+<br>
+
++ (2) **Pooling Agreement**:
+  * An agreement approved by the District **between two or more Landowners** for the purpose of allocating ground water among the total combined Certified Irrigated Acres identified in such agreement.
+    - For example, a farmer A (10 acres) and a farmer B (20 acres) contracted this agreement, then farmer A and B can access to (10 acres + 20 acres) * 9 acre-inches per year= 270 inches per year in total , and they can allocate this amount of water freely between their farmlands. 
+
+<br>
+
++ (3) **Pooling Arrangement**:
+  * An arrangement approved by the District by **a single landowner** to combine more than one tract of land under common ground water among the total combined Certified Irrigated Acres identified in the arrangement. 
+    - For example, suppose a farmer has multiple farmlands (field A :10 acres and field B: 20 acres) which are admitted as Certified Irrigated Acres. His total groundwater allocation is 270 inches per year in total ((10 acres + 20 acres) * 9 acre-inches per year= 270), and he can allocate this amount of groundwater to field A and field B freely. 
+
+<br>
+
++ source: "LOWER REPBULICAN NATURAL RESOURCES DISTRICT AMENDED AND RESTATED
+GROUND WATER MANAGEMENT RULES AND REGULATIONS" - CHAPTER 7 (https://www.lrnrd.org/docman/docs/478-groundwater-rules-and-regulations-clean-3-9-17/file)
+
+<br>
+
+
+# Understand the data on 2008-2012
+
+**Objective**: Conduct data analysis on the period between 2008-2012 to understand how many landowners own more than one farmland and examine whether these numbers are related to the use of more than 9 inches of water per year. 
+
+
+```{r}
+# sapply(reg_data, function(x) any(is.na(x)))
+ownr <- 
+  copy(reg_data) %>%
+  .[,owner_name := paste0(firstname, "_", lastname)] %>%
+  .[,.(ownerid, owner_name, nrdname, longdd, latdd)]
+```
+
+
+```{r, echo=F, eval=F}
+## Is `owerid` is a unique id associated with each landowner? (not important)
+
+# ownr[, ownerid] %>% unique() %>% length() #773
+# ownr[, owner_name] %>% unique() %>% length() #770
+
+ownr_unique <- ownr %>%
+  unique(., by = c("ownerid", "owner_name"))
+
+dup_ownr_nm <- ownr_unique$owner_name[duplicated(ownr_unique$owner_name)]
+
+ownr_unique %>%
+  .[owner_name %in% dup_ownr_nm] %>% 
+  .[order(ownerid)]
+
+# + # of ownerid is `r ownr[, ownerid] %>% unique() %>% length()`, and # of owner_name is `r ownr[, owner_name] %>% unique() %>% length()`
+# + Some owners have several fields TB under different ownerids (very rare)
+# + Hence, it is slightly more reliable to use `owner_name` to identify the owner of the field. 
+```
+
+<br>
+
+## Count landowners who own more than one farmland
+
+
+```{r}
+# === Unique field data points in LR and TB in the data === #
+ownr_distinct <- 
+  distinct(ownr, longdd, latdd, .keep_all = TRUE) %>%
+  data.table() %>%
+  .[, field_id_inownr := paste0("field",seq_len(.N)), by = owner_name]
+# nrow(ownr_distinct) #1710
+```
+
+<br>
+
++ We have **`r nrow(ownr_distinct)`** unique field data points in LR and TB in total. 
++ Meanwhile, the total number of landowners is `r ownr[, owner_name] %>% unique() %>% length()`
++ The difference between the two number suggests some landowner had more than two farmlands.
+
+<br>
+
+```{r, echo=F, eval=F}
+# --- By the way --- #
+# === Check === #
+ownr_distinct2 <- 
+    distinct(ownr, owner_name, longdd, latdd, .keep_all = TRUE)
+nrow(ownr_distinct2)
+
+anti_join(ownr_distinct2, ownr_distinct)
+
+# owner_name == "Leland & Donna_McCoy" is dropped when only longdd, latdd are used to determine uniqueness. That means, there is another data point that has the same longdd, latdd.
+ownr_distinct2 %>%
+  .[longdd == anti_join(ownr_distinct2, ownr_distinct)$longdd]
+
+# + This means that "Dennis & Kelly_Breinig" and "Leland & Donna_McCoy" has the same field. This could be happen if the ownership of the field has been changed from "Dennis & Kelly_Breinig" to "Leland & Donna_McCoy" (or from "Leland & Donna_McCoy" to "Dennis & Kelly_Breinig"). 
+#   * This way we can check whether ownership has changed or not. 
+```
+
+<br>
+
+### Landowners categorized by the number of farmlands owned
+
+```{r}
+# count how many of field each farmer has
+cnt_by_ownr <-  
+  ownr_distinct %>%
+  .[, .(num_fields = .N), by = .(owner_name)]
+
+# count the number of farmers by the number of fields they have
+cnt_by_ownr_smrry <- 
+  cnt_by_ownr %>%
+  .[, .(num_farmers = .N), by = num_fields] %>%
+  .[order(num_fields)]
+
+cnt_by_ownr_smrry%>%
+  gt() %>%
+  tab_header(title = md("Landowners categorized by the number <br> of farmlands owned")) %>%
+  cols_align(align = "left", columns = "num_fields")
+# sum(cnt_by_ownr_smrry$count)
+```
+
+<br>
+
++ This table shows how many fields each landowner owns. (e.g., there are 172 landowners who own two fields.)
+  + `num_farmers` column refers to the number of landowners who own a certain number of farmlands(`num_fields`).
++ Almost half of the farmers (`r round(((sum(cnt_by_ownr_smrry$num_farmers) - cnt_by_ownr_smrry[num_fields==1, num_farmers])/sum(cnt_by_ownr_smrry$num_farmers)) *100, 0)` %) own more than one farmlands.
+  * **NOTE:** However, these numbers might not be correct, because we restricted data by selecting only the farmland located within 5 miles buffers from the border between LR and TB. It is likely that there are some landowners in LR who have several farmlands around the the five miles boundary and some of such farmlands owned by the same landowner might heve been dropped because they are located outside of the 5 mile buffer.  
+<!--   * visualize the spatial distribution of data point color differentiated by the number of observations, if this is the case, then we should see many data points where categorized as only one farmland owned by a landowner.  --> 
+  
+<br/>
+
++ **In the below, I further examined whether multiple farmlands shared by the same landowners are located in the same NRD or not.**
+
+```{r}
+ownr_distinct_fld <-
+  copy(ownr_distinct) %>%
+  cnt_by_ownr[, on = "owner_name"]
+
+ownr_distinct_fld_sf <- 
+  st_as_sf(ownr_distinct_fld, coords = c("longdd","latdd"), crs = 4269) %>%
+  mutate(num_fields = factor(paste0("num_fields:", num_fields), levels = paste0("num_fields:", sort(unique(ownr_distinct_fld$num_fields)))))
+
+```
+
+```{r vis-ownr-distinct-fld, echo=F, fig.width=13,fig.height=15}
+
+ggplot() +
+  geom_sf(data = ownr_distinct_fld_sf, aes(color = owner_name), size = 0.5) +
+  facet_wrap(~num_fields, ncol = 2) +
+  geom_sf(data = nrd_boud, fill = NA) +
+  ggtitle("Locations of farmlands owned by the same landowners \n are categorized by the number of farmlands owned") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    legend.position="none"
+  )
+```
+
+<br>
+
+```{r, echo=F}
+
+fn_x <- function(x){
+  if (length(unique(x)) == 1){
+    return(unique(x))
+  } else{
+    return("Both")
+  }
+}
+
+tbl_ownr_distinct_fld <-
+  ownr_distinct_fld %>%
+  .[, .(num_fields, owner_name, nrdname)] %>%
+  .[, .(location = sapply(.SD, fn_x)), by = .(num_fields, owner_name),.SDcols = "nrdname"] %>%
+  .[, .(count = .N), by = .(num_fields, location)] %>%
+  dcast(num_fields ~ location, value.var = "count") %>%
+  .[, Total :=  sum(Both, `Lower Republican`, `Tri-Basin`, na.rm = T), by = num_fields] %>%
+  replace(is.na(.), 0)
+```
+
+```{r, tbl-ownr-distinct-fld, echo=F}
+tbl_ownr_distinct_fld %>%
+  gt() %>%
+  tab_style(
+    style = list(cell_fill(color = "lightcyan")),
+    locations = cells_body(columns = c("Both","Lower Republican","Tri-Basin"))
+  )%>%
+  tab_header(title = md("Breakdown of landowners categorized by the number of owned farmlands")) %>%
+  cols_align(align = "left", columns = names(tbl_ownr_distinct_fld)[1]) %>%
+  cols_align(align = "center", columns = names(tbl_ownr_distinct_fld)[2:4]) %>%
+  tab_spanner(label = "num_farmers", columns = c("Both","Lower Republican","Tri-Basin"))
+```
+
+<br>
+
++ The points in the above figure show the location of farmlands and are uniquely color-coded by landowner. Each map is associated with the number of fields owned. 
++ Some landowners have multiple farmlands in both LR and TB. 
++ The table above shows Table  illustrates how many of those multiple farmlands located in the same NRD or both.   
+  * Most of the farmers have their farmland in the same NRD, but landowners who own more than three farmlands tend to have their farmlands across NR and LR.
+
+<br>
+
++ **So, what is the implication?**
++ It means that 
+  * If a farmer has several fields:
+    - in a single NRD (either LR or TB)
+      + Pooling Arrangement is available
+    - across LR and TB: 
+      + Pooling Arrangement is available for farmland located in 
+        * * **Need to look up whether total groundwater allocation is transferable between TB and LR if the same owner has several fields in both LR and RB**
+        * Can we only use them to create treat group and control group? we can control unobservable farmer's characteristics only if there are enough amount of data.
+
+
+
+
+## Find farmers who used more than 9 inches-acre in LR.
+  * Do they have any common characteristics?
+  * Type of farmers (Corporation, Organization, individual farmer) 
+  
+<br/>
+
++ If a single landowner has multiple farmlands, he should have allocated his total pumping limitation to his all farmlands every year through **Pooling Arrangement**. 
+
+
+```{r tbl-over9-LR, echo=F}
+# Number of landowners in LR (data on 2008-2012): 831
+ownr_distinct_fld_LR <- 
+  ownr_distinct_fld[nrdname=="Lower Republican",]
+# nrow(ownr_distinct_fld_LR)
+
+over9_LR <- 
+  reg_data %>%
+  .[usage > 9 & nrdname=="Lower Republican",] %>%
+  .[,owner_name := paste0(firstname, "_", lastname)] %>%
+  .[,.(usage, year, owner_name, longdd, latdd)] %>%
+  ownr_distinct_fld_LR[., on=c("owner_name", "longdd", "latdd")]
+
+# length(over9_LR[, owner_name] %>% unique()) #285
+
+tbl_over9_LR <-
+  over9_LR %>%
+  .[, .(
+    num_field = mean(num_fields),
+    num_overuse = .N,
+    overuse_Years = sapply(
+      .SD, function(x) unique(x)%>% sort()%>% paste0(., collapse=", ")
+      )
+    ), .SDcols = "year", by = owner_name]
+  
+tbl_over9_LR %>%
+  .[order(num_overuse, owner_name)] %>%
+  gt() %>%
+  cols_align(align = "center", columns = c("num_field", "num_overuse")) %>%
+  cols_align(align = "right", columns = "overuse_Years") %>%
+  tab_style(
+    style = list(cell_fill(color = "lightcyan")),
+    locations = cells_body(columns = c("num_overuse","overuse_Years"))
+  )%>%
+  tab_header(title = md("Who used more than 9 inches in which year?"))
+```
+
+<br>
+
++ Total number of landowners in LR who are included in the data on 2009-2012 is `r nrow(ownr_distinct_fld_LR)`, and `r nrow(tbl_over9_LR)` used 
++ Among them, the total number of landowners who used more than 9 inches in the period 2009-2012 is `r length(over9_LR[, owner_name] %>% unique())`
++ The above table is a list of landowners in LR who used more than 9 inches in any year during 2008-2012 and shows how often (`count`) and in which year (`when`) they overused. `num_field` refers the total number of farmlands a landowner has. The table is ordered by  the number of years the owner overused groundwater (`num_overuse `).
+
++ Basiscally, the overuse happened in 2012 no matter how many of fields a landowner has. 
+
++ This means that the use of more than 9 inches is because of: (1) drought in 2012, (2) landowners who own many farmlands and allocated his total allocation amount (Pooling Agreement).
+
+
+
+```{r, tbl-over20-LR, tab.cap = "Who used more than 20 inches in which year?"}
+over20_LR <- 
+  reg_data %>%
+  .[usage > 20 & nrdname=="Lower Republican",] %>%
+  .[,owner_name := paste0(firstname, "_", lastname)] %>%
+  .[,.(usage, year, owner_name, longdd, latdd)] %>%
+  ownr_distinct_fld_LR[., on=c("owner_name", "longdd", "latdd")]
+
+# length(over20_LR[, owner_name] %>% unique()) #285
+
+tbl_over20_LR <-
+  over20_LR %>%
+  .[, .(
+    num_field = mean(num_fields),
+    num_overuse = .N,
+    overuse_Years = sapply(
+      .SD, function(x) unique(x)%>% sort()%>% paste0(., collapse=", ")
+      )
+    ), .SDcols = "year", by = owner_name]
+  
+tbl_over20_LR %>%
+  .[order(num_overuse, owner_name)] %>%
+  gt() %>%
+  cols_align(align = "center", columns = c("num_field", "num_overuse")) %>%
+  cols_align(align = "right", columns = "overuse_Years") %>%
+  tab_style(
+    style = list(cell_fill(color = "lightcyan")),
+    locations = cells_body(columns = c("num_overuse","overuse_Years"))
+  )%>%
+  tab_header(title = md("Who used more than 20 inches in which year?"))
+```
+
+
+
+
+
+
+# Conclusion
++ About a half of the landowners in LR and TB have multiple farmlands. 
+  * Some of these landowners own farmland located in both LR and TB, and some own land located in the same NRD (either LR or TB).
++ Those landowners who own more than one farmland tend to pump more than 9 inches-acre groundwater 
++ This means that we need to aggregated water usage data by farmlands owned by the same landowners. In grouping, we need to consider whether the farmlands owned by each individual landowner are located in the same NRD or across NRDs.
+
++ Or, we could do analysis using only that data related to landowner who own a single 
+
+## Other Concerns
++ source: "Sustainability Steps – Previous and Planned Actions in the Republican Basin to Preserve Water" (https://www.urnrd.org/sites/default/files/files/20/sustainabilitysteps2021.pdf)
++ The 
+  * "With participation in federal and state **conservation programs** designed to reduce water use, more than 13,000 irrigated acres have been permanently or temporarily retired. This respresents over 4% of the toral irrigated acres in the LRNRD"
+    - The federal Conservation Reserve Program (CRP)?
+    - The rule-book (7-) says that any landowner participating in such conversation programs is not eligible to receive an allocation. But once his contract of any conservation program is over, a landowner will become eligible for an allocation. In this case, he can receive allocation for the remaining years of Allocation Period. 
+  * "The District has also promoted a **cost-share program to encourage the use of water-saving soil-moisture probes**. The probes have been installed on approximately 60,000 acres."
+  
+
++ use zip_code, or school district, phone area code
++ "zip_code"
+
+# The patter of missing data
+
+```{r}
+survive_trt_group <- 
+  # reg_data_all %>%
+  reg_data %>%
+  .[nrdname=="Lower Republican", ] %>%
+  .[,.(wellid, year)] %>%
+  .[,year := paste0("y_", year)] %>%
+  .[,data_index := 1] %>%
+  dcast(wellid ~ year, value.var = "data_index") 
+
+
+survive_trt_group[is.na(survive_trt_group)] <- 0
+
+survive_trt_group2 <- 
+  copy(survive_trt_group) %>%
+  .[, total := rowSums(.SD), by = wellid]
+
+
+lon_survive_trt_group <- 
+   survive_trt_group2[total<=4, !"total"] %>%
+   .[,id := seq(from=10, by=100, length.out = nrow(.))] %>%
+   melt(id.vars = c("wellid", "id"), measure.vars = names(.)[-c(1,7)])
+
+ggplot(lon_survive_trt_group, aes(x = variable, y = id, group = id, col = factor(value)))+
+  geom_line(size = 0.5) +
+  geom_point(shape = 15, size = 0.5)
+
+lon_survive_trt_group3 <- 
+   copy(survive_trt_group2) %>%
+   .[total<=4, !"total"] %>%
+   .[,survie_index := case_when(
+    y_2008==1 & y_2009==1 & y_2010==1 & y_2011==1 & y_2012==0 ~ "f4",
+    y_2008==1 & y_2009==1 & y_2010==1 & y_2011==0 & y_2012==0 ~ "f3",
+    y_2008==1 & y_2009==1 & y_2010==1 & y_2011==0 & y_2012==0 ~ "f3",
+    y_2008==1 & y_2009==1 & y_2010==0 & y_2011==0 & y_2012==0 ~ "f2",
+    y_2008==1 & y_2009==0 & y_2010==0 & y_2011==0 & y_2012==0 ~ "f1",
+    TRUE ~ "f0"
+    )]
+
+lon_survive_trt_group3 %>%
+  .[, .N, by = survie_index]
+
+well_f0 <- lon_survive_trt_group3[survie_index=="f0", wellid]
+well_f1 <- lon_survive_trt_group3[survie_index=="f1", wellid]
+well_f2 <- lon_survive_trt_group3[survie_index=="f2", wellid]
+well_f3 <- lon_survive_trt_group3[survie_index=="f3", wellid]
+well_f4 <- lon_survive_trt_group3[survie_index=="f4", wellid]
+
+dt_f1 <- 
+  copy(reg_data) %>%
+  .[, idn :=case_when(
+      wellid %in% well_f1 ~ "f1",
+      wellid %in% well_f2 ~ "f2",
+      wellid %in% well_f3 ~ "f3",
+      wellid %in% well_f4 ~ "f4",
+      wellid %in% well_f0 ~ "f0"
+      )]
+
+# dt_f1[idn != "f0"] %>%
+#   ggplot() +
+#   geom_line(aes(x=year, y=usage, group = wellid, color=factor(wellid)))+
+#   geom_line(aes(x=year, y=usage, group = wellid, color=factor(wellid)))+
+#   facet_wrap( ~ idn, ncol=2)
+```
+
+
+ 
+
+
+
+
+
+
+# References
++ "LOWER REPBULICAN NATURAL RESOURCES DISTRICT AMENDED AND RESTATED
+GROUND WATER MANAGEMENT RULES AND REGULATIONS" - CHAPTER 7 (https://www.lrnrd.org/docman/docs/478-groundwater-rules-and-regulations-clean-3-9-17/file)
++ "Sustainability Steps – Previous and Planned Actions in the Republican Basin to Preserve Water" (https://www.urnrd.org/sites/default/files/files/20/sustainabilitysteps2021.pdf)
+
+
+
+
+
+
+
+
+
+
+
+

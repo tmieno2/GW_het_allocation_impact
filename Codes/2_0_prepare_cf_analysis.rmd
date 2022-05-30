@@ -1,0 +1,476 @@
+---
+title: "Prepare for CF Regression Analysis"
+author: "Shunkei Kakimoto"
+output:
+  html_document:
+    number_sections: yes
+    theme: flatly
+    toc_float: yes
+    toc: yes
+    toc_depth: 3
+geometry: margin=1in
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(here)
+
+here::i_am("GitControlled/Codes/2_0_prepare_cf_analysis.rmd")
+
+# opts_knit$set(root.dir = "")
+# opts_knit$set(root.dir = here())
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  cache = FALSE,
+  comment = NA,
+  message = FALSE,
+  warning = FALSE,
+  tidy = FALSE,
+  cache.lazy = FALSE,
+  #--- figure ---#
+  dpi = 400,
+  fig.width = 7.5,
+  fig.height = 5,
+  out.width = "750px",
+  out.height = "500px"
+)
+
+# /*===== Basic Packages  =====*/
+# /*---- Data Wrangling ----*/
+library(data.table)
+library(tidyverse)
+library(DescTools)
+library(maps)
+
+# /*---- Visualization ----*/
+library(RColorBrewer)
+library(patchwork)
+library(ggplot2)
+library(ggthemes)
+library(ggpubr)
+library(viridis)
+library(grid)
+library(gridExtra)
+library(GGally)
+
+# /*---- Model Summary ----*/
+library(stats)
+library(modelsummary)
+library(flextable)
+library(officer)
+library(officedown)
+library(gt)
+```
+
+```{r, echo=F}
+map_theme <-
+  theme(
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank()
+  )
+```
+  
+
+# Objectives
++ remove data on landowners who own multiple farmlands across inside and outside of 5-miles or 10-miles buffers of LR side. 
++ For LR data, convert yearly well-level data to **yearly owner-level data**
+  * Consider clustering variable: `cntyname`
+  * Take weighted average ($sum(volaf*12)/sum(acres)$)
+
++ Final output:
+  * `reg_data_5mi`
+  * `reg_data_10mi`
+
+## Data
+
+```{r, echo=F}
+# === setup === #
+library(here)
+source(here("GitControlled/Codes/0_1_ls_packages.R"))
+source(here("GitControlled/Codes/0_0_functions.R"))
+```
+
+```{r}
+#/*--------------------------------*/
+#' ## Data
+#/*--------------------------------*/
+# === NRD boundary === #
+nrd_boud <- 
+ here("Shared/Data/WaterAnalysis/NRD_bd/BND_NaturalResourceDistricts_DNR.shp") %>%
+ st_read() %>%
+ filter(NRD_Name %in% c("Lower Republican", "Tri-Basin")) %>%
+ st_transform(4269)
+
+
+# === All well data === #
+ir_data <- 
+  here("Shared/Data/WaterAnalysis/ir_data_nw.rds") %>%
+  readRDS() %>%
+  data.table() %>%
+  .[source %in% c('Meter','METER','metered') & nrdname %in% c("Lower Republican", "Tri-Basin")] %>%
+  .[,owner_name := paste0(firstname, "_", lastname)] %>%
+  .[,nrd_owner_name := paste0(nrdname, " ", owner_name) ]
+
+# === Regression Data (period: 2008-2015)  === #
+w_analysis_dt <- 
+  here("Shared/Data/WaterAnalysis/w_analysis_dt.rds") %>%
+  readRDS() %>%
+  .[,nrd_owner_name := paste0(nrdname, " ", owner_name)] %>%
+  .[year %in% 2008:2015 & usage <= 45]
+
+# === Regression Data (period: 2008-2012) === #
+reg_data <- 
+  w_analysis_dt %>%
+  .[year %in% 2008:2012]
+```
+
+
+# Identify landowners whose farmland located in both inside and outside of the 5 mile or 10 mile buffer
+
+```{r, echo=F, eval=F}
+# Don't need to run
+#/*--------------------------------*/
+#' ## Num of owners by NRD (After distinguished owners)
+#/*--------------------------------*/
+
+# === 5 miles criterion === #
+# total number of farmers in the data: 1386
+# TB: 444
+# LR: 386
+unique(reg_data[in_5mi==1,]$nrd_owner_name) %>% length()
+
+reg_data[in_5mi==1,] %>%
+  unique(., by = "nrd_owner_name") %>%
+  .[, .N, by = nrdname]
+
+# === 10 miles criterion === #
+# total number of farmers in the data: 1386
+# TB: 693
+# LR: 693
+reg_data %>%
+  unique(., by = "nrd_owner_name") %>%
+  .[, .N, by = nrdname]
+```
+
+
+```{r}
+# === A list of owners who owns farmland outside of the 5 and 10 mi buffer in LR side === #
+ls_owners_out5mi_LR <- 
+  ir_data %>%
+  .[nrdname=="Lower Republican" & in_5mi==0, nrd_owner_name] %>%
+  unique()
+
+ls_owners_out10mi_LR <- 
+  ir_data %>%
+  .[nrdname=="Lower Republican" & in_10mi==0, nrd_owner_name] %>%
+  unique()
+
+# === Create "both_InOut_5mi" and "both_InOut_10mi" index === #
+# Ex) both_InOut_5mi==1, if an landowner has farmland outside of the 5 miles in LR side
+reg_data <- 
+  reg_data %>% 
+  .[, `:=`(
+    both_InOut_5mi_LR = ifelse(nrd_owner_name %in% ls_owners_out5mi_LR, 1, 0),
+    both_InOut_10mi_LR = ifelse(nrd_owner_name %in% ls_owners_out10mi_LR, 1, 0)
+    )]
+```
+
+```{r, echo=F, eval=F}
+# Don't need to run
+# === Check === #
+reg_data_sf <-  st_as_sf(reg_data, coords = c("longdd","latdd"), crs = 4269)
+
+ggplot() +
+  geom_sf(data=nrd_boud) +
+  geom_sf(data = filter(reg_data_sf, nrdname == "Lower Republican"), aes(color=factor(both_InOut_5mi_LR)), size=0.5)
+
+ggplot() +
+  geom_sf(data=nrd_boud) +
+  geom_sf(data = filter(reg_data_sf, nrdname == "Lower Republican"), aes(color=factor(both_InOut_10mi_LR)), size=0.5)
+```
+
+
+
+```{r, echo=F, eval=F}
+# Don't need to run
+#/*--------------------------------*/
+#' ## Num of owners by NRD (After distinguished owners)
+#/*--------------------------------*/
+# === 5 miles criterion === #
+# total number of farmers in the data: 748
+# TB: 444
+# LR: 304
+unique(reg_data[in_5mi==1&both_InOut_5mi_LR==0,]$nrd_owner_name) %>% length()
+
+reg_data[in_5mi==1&both_InOut_5mi_LR==0,] %>%
+  unique(., by = "nrd_owner_name") %>%
+  .[, .N, by = nrdname]
+
+# === 10 miles criterion === #
+# total number of farmers in the data: 1386
+# TB: 693
+# LR: 638
+reg_data[both_InOut_10mi_LR==0,] %>%
+  unique(., by = "nrd_owner_name") %>%
+  .[, .N, by = nrdname]
+```
+
+
+```{r}
+# === 5 miles buffers === #
+reg_data[in_5mi==1] %>%
+  unique(., by="nrd_owner_name") %>%
+  .[, .N, by=.(nrdname, both_InOut_5mi_LR) ] %>%
+  .[order(nrdname)] %>%
+  print()
+
+# === 10 miles buffers === #
+reg_data[in_10mi==1] %>%
+  unique(., by="nrd_owner_name") %>%
+  .[, .N, by=.(nrdname, both_InOut_10mi_LR) ] %>%
+  .[order(nrdname)] %>%
+  print()
+```
+
+
++ 5 miles buffer criteria: 
+  * 82 owners in LR also have farmlands outside of the buffer
++ 10 miles buffer criteria: 
+  * 55 owners in LR also have farmlands outside of the buffer
+
+
+# Create Raw Regression Data for 5 miles and 10 miles criterion, respectively
+
+## Regression data with 5 miles criterion
+
+### Problem
+
++ **Which variable should be used for clustering?**
+  + I used to use `tr` (combinations of "township" and "range" index) for clustering. 
++ However, since some farmers have multiple wells across `tr`, so `tr` cannot be used.
+  * If a farmer has farmland across several "range", the value of `tr` is not one, when we aggregated LR data by owner and year. 
+
++ We need some new geographic segmentation index which covers larger area.
+  * Alternatives:
+    - **County**
+
+<br>
+
++ Check weather all the farmlands owned by a single owner in LR located in the same county.
+  * For those who have multiple wells across several counties, find in which county their large portion of farmlands were located based on the total acres by county.
+  * Create `cntyname_fix` 
+
+
+### Cluster variable: `cntyname` for `reg_data_LR_5mi` data
+
+
+```{r}
+# - Data on TB - #
+reg_data_TB_5mi <- 
+  reg_data[in_5mi==1 & nrdname=="Tri-Basin",]
+
+# - Data on LR - #
+reg_data_LR_5mi <- 
+  reg_data[in_5mi==1 & both_InOut_5mi_LR==0 & nrdname=="Lower Republican",]
+
+reg_data_5mi_raw <- 
+  bind_rows(reg_data_TB_5mi, reg_data_LR_5mi)
+```
+
+
+```{r}
+# === A list of landowners whose farmlands are located in several counties  === #
+ls_cnty_5mi <- 
+  reg_data_5mi_raw %>%
+  distinct(nrd_owner_name, cntyname) %>%
+  .[, index := rep(1, nrow(.)),] %>%
+  dcast(.,nrd_owner_name ~ cntyname, value.var = "index") %>%
+  replace(is.na(.), 0) %>%
+  .[, total := rowSums(.SD), by = nrd_owner_name] %>%
+  .[total>1, ]
+```
+
+Example maps for those farmlands are shown in the below. 
+
+```{r, echo=F}
+ne_cnty_sf <-  tigris::counties("Nebraska", cb = TRUE, resolution="20m", progress_bar = FALSE) %>%
+  dplyr::select(COUNTYFP, NAME) %>%
+  filter(NAME %in% str_to_sentence(unique(reg_data$cntyname)))%>%
+  st_transform(4269)
+
+ex_cnty_5_sf <-
+  reg_data_5mi_raw %>%
+  .[nrd_owner_name %in% ls_cnty_5mi[,nrd_owner_name][1:6],] %>%
+  distinct(nrd_owner_name, longdd, latdd, .keep_all = TRUE) %>%
+  st_as_sf(., coords = c("longdd","latdd"), crs = 4269)
+
+ggplot()+
+  geom_sf(data=ne_cnty_sf, aes(fill=NAME), alpha=0.6) +
+  geom_sf(data=nrd_boud, color="blue", fill=NA) +  
+  geom_sf(data=ex_cnty_5_sf, size=1)+
+  facet_wrap(~nrd_owner_name, ncol=3) +
+  map_theme
+```
+
+<br>
+
++ Create `cntyname_fix` column which contains modified `cntyname`.
++ In the below, I decided in which county the farmers should be belong to based on the total acres of the farmlands by county. 
+
+<br>
+
+```{r}
+which_cnty_5 <-
+  reg_data_5mi_raw %>%
+  .[nrd_owner_name %in% ls_cnty_5mi[, nrd_owner_name],] %>%
+  distinct(nrd_owner_name, longdd, latdd, .keep_all = TRUE) %>%
+  .[,.(sum_acres = sum(acres)), by = .(nrd_owner_name, cntyname)] %>%
+  .[,.SD[sum_acres == max(sum_acres), ], by = nrd_owner_name]
+
+which_cnty_5[, .N, by = cntyname]
+
+Phelps <- which_cnty_5[cntyname=="Phelps", nrd_owner_name]
+Kearney <- which_cnty_5[cntyname=="Kearney", nrd_owner_name]
+Gosper <- which_cnty_5[cntyname=="Gosper", nrd_owner_name]
+Harlan <- which_cnty_5[cntyname=="Harlan", nrd_owner_name]
+Furnas <- which_cnty_5[cntyname=="Furnas", nrd_owner_name]
+
+reg_data_5mi_raw <- 
+  reg_data_5mi_raw %>%
+  .[,cntyname_fix := case_when(
+    nrd_owner_name %in% Phelps ~ "Phelps",
+    nrd_owner_name %in% Kearney ~ "Kearney",
+    nrd_owner_name %in% Gosper ~ "Gosper",
+    nrd_owner_name %in% Harlan ~ "Harlan",
+    nrd_owner_name %in% Furnas ~ "Furnas",
+    TRUE ~ cntyname
+  )]
+```
+
+```{r, echo=F, eval=F}
+# Don't need to run
+# === Check === #
+cnty_5_check <- 
+  reg_data_5mi_raw %>%
+  distinct(nrd_owner_name, cntyname_fix) %>%
+  .[, index := rep(1, nrow(.)),] %>%
+  dcast(.,nrd_owner_name ~ cntyname_fix, value.var = "index") %>%
+  replace(is.na(.), 0) %>%
+  .[, total := rowSums(.SD), by = nrd_owner_name]
+
+cnty_5_check[total>1, ]
+```
+
+
+```{r}
+# === save the modified data  === #
+saveRDS(reg_data_5mi_raw, here("Shared/Data/WaterAnalysis/reg_data_5mi_raw.rds"))
+```
+
+
+## Regression data with 10 miles criterion
+
+### Cluster variable: `cntyname` for `reg_data_LR_10mi` data
+
++ Do the same things: 
+
+```{r}
+# - Data on TB - #
+reg_data_TB_10mi <- 
+  reg_data[nrdname=="Tri-Basin",]
+
+# - Data on LR - #
+reg_data_LR_10mi <- 
+  reg_data[both_InOut_10mi_LR==0 & nrdname=="Lower Republican",]
+
+reg_data_10mi_raw <- 
+  bind_rows(reg_data_TB_10mi, reg_data_LR_10mi)
+```
+
+
+```{r}
+cnty_10 <- 
+  reg_data_10mi_raw %>%
+  distinct(nrd_owner_name, cntyname) %>%
+  .[, index := rep(1, nrow(.)),] %>%
+  dcast(.,nrd_owner_name ~ cntyname, value.var = "index") %>%
+  replace(is.na(.), 0) %>%
+  .[, total := rowSums(.SD), by = nrd_owner_name]
+
+# county_cl[total>1, nrd_owner_name]
+cnty_10[total>1, ]
+```
+
+The map of those farmlands are shown in the below. 
+
+```{r, echo=F}
+# In the below,  based on the total acres of the farmlands by county, judge in which county the farmers should be belong to. 
+
+which_cnty_10 <-
+  reg_data_10mi_raw %>%
+  .[nrd_owner_name %in% cnty_10[total>1, nrd_owner_name],] %>%
+  distinct(nrd_owner_name, longdd, latdd, .keep_all = TRUE) %>%
+  .[,.(sum_acres = sum(acres)), by = .(nrd_owner_name, cntyname)] %>%
+  .[,.SD[sum_acres == max(sum_acres), ], by = nrd_owner_name]
+
+# which_cnty_10[, .N, by = cntyname]
+
+Phelps <- which_cnty_10[cntyname=="Phelps", nrd_owner_name]
+Kearney <- which_cnty_10[cntyname=="Kearney", nrd_owner_name]
+Gosper <- which_cnty_10[cntyname=="Gosper", nrd_owner_name]
+Harlan <- which_cnty_10[cntyname=="Harlan", nrd_owner_name]
+Furnas <- which_cnty_10[cntyname=="Furnas", nrd_owner_name]
+Franklin <- which_cnty_10[cntyname=="Franklin", nrd_owner_name]
+
+reg_data_10mi_raw <- 
+  reg_data_10mi_raw %>%
+  .[,cntyname_fix := case_when(
+    nrd_owner_name %in% Phelps ~ "Phelps",
+    nrd_owner_name %in% Kearney ~ "Kearney",
+    nrd_owner_name %in% Gosper ~ "Gosper",
+    nrd_owner_name %in% Harlan ~ "Harlan",
+    nrd_owner_name %in% Furnas ~ "Furnas",
+    nrd_owner_name %in% Franklin ~ "Franklin",
+    TRUE ~ cntyname
+  )]
+```
+
+```{r}
+# === Save the modified data === #
+saveRDS(reg_data_10mi_raw, here("Shared/Data/WaterAnalysis/reg_data_10mi_raw.rds"))
+```
+
+
+```{r}
+# === Check === #
+cnty_10_check <- 
+  reg_data_10mi_raw %>%
+  distinct(nrd_owner_name, cntyname_fix) %>%
+  .[, index := rep(1, nrow(.)),] %>%
+  dcast(.,nrd_owner_name ~ cntyname_fix, value.var = "index") %>%
+  replace(is.na(.), 0) %>%
+  .[, total := rowSums(.SD), by = nrd_owner_name]
+
+# county_cl[total>1, nrd_owner_name]
+cnty_10_check[total>1, ]
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

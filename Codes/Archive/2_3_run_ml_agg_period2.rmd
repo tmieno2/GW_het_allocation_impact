@@ -1,0 +1,332 @@
+---
+title: "Run EconML (allocation period 2: cross-sectional)"
+author: "Shunkei Kakimoto"
+output:
+  html_document:
+    number_sections: yes
+    theme: flatly
+    toc_float: yes
+    toc: yes
+    toc_depth: 3
+geometry: margin=1in
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_knit$set(root.dir = "~/Dropbox/ResearchProject/HeterogeneousAllocation")
+
+# library(here)
+# opts_knit$set(root.dir = here())
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  cache = FALSE,
+  comment = NA,
+  message = FALSE,
+  warning = FALSE,
+  tidy = FALSE,
+  cache.lazy = FALSE,
+  #--- figure ---#
+  dpi = 400,
+  fig.width = 7.5,
+  fig.height = 5,
+  out.width = "750px",
+  out.height = "500px"
+)
+
+# /*===== Basic Packages  =====*/
+# /*---- Data Wrangling ----*/
+library(data.table)
+library(tidyverse)
+library(DescTools)
+library(maps)
+
+# /*---- Visualization ----*/
+library(RColorBrewer)
+library(patchwork)
+library(ggplot2)
+library(ggthemes)
+library(ggpubr)
+library(viridis)
+library(grid)
+library(gridExtra)
+library(GGally)
+
+# /*---- Model Summary ----*/
+library(stats)
+library(modelsummary)
+library(flextable)
+library(officer)
+library(officedown)
+library(gt)
+```		
+
+# Objective
++ Forcus on the data from 2008-2012 (this period is associated with the allocation period 2)
+  * use aggregated data (cross-sectional) by individual well
+
+
+# Set up
+
+```{r}
+# setwd(here())
+# /*===== R =====*/
+source("./GitControlled/Codes/0_1_ls_packages.R")
+source("./GitControlled/Codes/0_0_functions.R")
+
+# /*===== python  =====*/
+use_python("./myenv/bin/python")
+use_virtualenv("./myenv/bin/activate_this.py")
+
+source_python("./GitControlled/Codes/0_0_import_modules.py")
+# source_python("./GitControlled/COdes/0_0_functions.py")
+
+# /*===== Data (allocation period 2, 2008-2012 )=====*/
+# --- panel data--- #
+reg_data <- 
+  readRDS("./Shared/Data/WaterAnalysis/comp_reg_dt.rds") %>%
+  .[year %in% 2008:2012 & usage <= 40,]
+
+# --- aggregated data (allocation period 2:2008:2012 by wells)--- #
+reg_data_agg <- 
+  data.table::copy(reg_data) %>%
+  .[,`:=`(
+    sum_usage = sum(usage),
+    pr_in = sum(pr_in),
+    sum_gdd = sum(gdd_in)
+  ),by=wellid] %>%
+  unique(., by="wellid")
+```
+
+
+# Preparation
+
++ Create training and testing dataset
+
++ include year FEs and individual FEs (from *panel_fe_dmlof.rmd*)
+  * run `feols(usage ~ 1 | wellid + year, data = reg_data_agg)` and extract the coefficients of year FEs and individual FEs
+    - those coefficients can be regarded as the unique impact associated with each individual and year. 
+
+
+## Variables to be included
+```{r}
+# /*===== control variables =====*/
+cov_ls <- c(
+  # --- weather --- #
+  "pr_in", "gdd_in","pet_in",
+  # --- soil --- #
+  "silttotal_r", "claytotal_r", "slope_r", "ksat_r", "awc_r"
+  )
+
+all_vars <- c(cov_ls, 'usage', 'treat2', 'tr', 'year')
+```
+
+# CF analysis
+
+```{r}
+# /*===== Training Dataset  =====*/
+# --- dependent variable --- #
+Y <- reg_data_agg[, usage]
+# --- treatment indicator --- #
+T <- reg_data_agg[, treat2]
+# --- features --- #
+# X <- reg_data_agg[, c(cov_ls, "ind_fe", "year_fe"), with=FALSE]
+X <- reg_data_agg[, ..cov_ls]
+# --- cluster  --- #
+cl_var <- reg_data_agg[,tr] %>% as.factor()
+
+# /*===== Run CF =====*/
+forest_W <- boosted_regression_forest(X, T, tune.parameters = "all")
+W_hat <- predict(forest_W)$predictions
+forest_Y <- boosted_regression_forest(X, Y, tune.parameters = "all")
+Y_hat <- predict(forest_Y)$predictions
+
+res_cf <- causal_forest(
+  X=X, Y=Y, W=T, 
+  Y.hat = Y_hat, 
+  W.hat = W_hat,
+  clusters = cl_var,
+  tune.parameters = "all",
+)
+
+# /*===== variable of importance  =====*/
+var_imp <- 
+  data.frame(
+  # name = c(cov_ls, "year_fe", "ind_fe"),
+  name = cov_ls,
+  value = variable_importance(res_cf)[,1]
+) %>%
+arrange(desc(value))
+
+gt(var_imp)
+```
+
++ **Results**:
+  * In aggregated data, soil variables: `slope_r`, `silttotal_r`, `awc_r` are the candidates for heterogeneity drivers
+
+```{r}
+# /*===== Visualization: TE estimates =====*/
+gen_impact_viz(
+  cf_res= res_cf,
+  data_base=reg_data_agg,
+  treat_var='treat2',
+  var_ls= cov_ls,
+  # var_ls= c(cov_ls, "year_fe", "ind_fe"),
+  var_ls_int = cov_ls
+  # var_ls= cov_ls
+)
+```
+
+<br>
+
+
+# DML-OrthoForest analysis
+
+## Run DML-OrthoForest (`slope_r`, `silttotal_r`, `awc_r`)
+
++ Based on the reuslts from CF, I use `slope_r`, `silttotal_r`, `awc_r` as features that capture heterogeneity
+
+### Training Data
+
+```{r}
+het_vars_v1 <- c("slope_r", "silttotal_r", "awc_r")
+
+# --- dependent variable --- #
+Y <- reg_data_agg[, usage] %>% as.array()
+# --- treatment indicator --- #
+T <- reg_data_agg[, treat2] %>% as.array()
+# --- heterogeneous impact dirivers --- #
+X <- reg_data_agg[, ..het_vars_v1] %>% as.matrix()
+# --- controls --- #
+# W <- reg_data_agg[,c(cov_ls, "year_fe", "ind_fe"), with=FALSE] %>%
+#   as.matrix()
+W <- reg_data_agg[,c(cov_ls), with=FALSE] %>%
+  as.matrix()
+```
+
+### Testing Data
+
+```{r}
+X_test_comp <- 
+  lapply(het_vars_v1, function(x) gen_pred_data(reg_data_agg, het_vars_v1, x)) %>%
+  bind_rows()
+
+X_test <- 
+  X_test_comp[,!"target_var"] %>%
+  as.matrix()
+```
+
+```{python}
+# repl_python()
+lambda_reg=0.33
+
+est = DMLOrthoForest(
+    n_trees=1000,
+    min_leaf_size=20,
+    max_depth=50,
+    subsample_ratio=0.7,
+    model_T=Lasso(alpha=lambda_reg),
+    model_Y=Lasso(alpha=lambda_reg),
+    model_T_final=WeightedLasso(alpha=lambda_reg),
+    model_Y_final=WeightedLasso(alpha=lambda_reg),
+    global_residualization=False
+    )
+
+est.fit(r.Y, r.T, X=r.X, W=r.W)
+
+treatment_effects = est.effect(r.X_test)
+
+te_lower, te_upper = est.effect_interval(r.X_test)
+```
+
+### Visualization
+
+```{r}
+res_dml_orf_v1 <- 
+  data.table(
+    te_pred = py$treatment_effects,
+    te_lower = py$te_lower,
+    te_upper = py$te_upper
+  ) %>%
+  cbind(X_test_comp, .)
+
+gen_econml_vis(res_econml_dt=res_dml_orf_v1, het_vars =het_vars_v1)
+```
+
+<br>
+
+<br>
+
+
+## Run DML-OrthoForest (`pr_in`, `gdd_in`, `pet_in`)
+
++ What if I use `pr_in`, `gdd_in`, and `pet_in` as features that capture heterogeneity, like the same way we did in the case of panel dataset.
+
+### Training Data
+
+```{r}
+het_vars_v2 <- c("pr_in", "gdd_in", "pet_in")
+
+# --- dependent variable --- #
+Y <- reg_data_agg[, usage] %>% as.array()
+# --- treatment indicator --- #
+T <- reg_data_agg[, treat2] %>% as.array()
+# --- heterogeneous impact dirivers --- #
+X <- reg_data_agg[, ..het_vars_v2] %>% as.matrix()
+# --- controls --- #
+# W <- reg_data_agg[,c(cov_ls, "year_fe", "ind_fe"), with=FALSE] %>%
+#   as.matrix()
+W <- reg_data_agg[,c(cov_ls), with=FALSE] %>%
+  as.matrix()
+```
+
+### Testing Data
+
+```{r}
+X_test_comp <- 
+  lapply(het_vars_v2, function(x) gen_pred_data(reg_data_agg, het_vars_v2, x)) %>%
+  bind_rows()
+
+X_test <- 
+  X_test_comp[,!"target_var"] %>%
+  as.matrix()
+
+head(X_test)
+```
+
+```{python}
+# repl_python()
+lambda_reg=0.33
+
+est = DMLOrthoForest(
+    n_trees=1000,
+    min_leaf_size=20,
+    max_depth=50,
+    subsample_ratio=0.7,
+    model_T=Lasso(alpha=lambda_reg),
+    model_Y=Lasso(alpha=lambda_reg),
+    model_T_final=WeightedLasso(alpha=lambda_reg),
+    model_Y_final=WeightedLasso(alpha=lambda_reg),
+    global_residualization=False
+    )
+
+est.fit(r.Y, r.T, X=r.X, W=r.W)
+
+treatment_effects = est.effect(r.X_test)
+
+te_lower, te_upper = est.effect_interval(r.X_test)
+```
+
+### Visualization
+
+```{r}
+res_dml_orf_v2 <- 
+  data.table(
+    te_pred = py$treatment_effects,
+    te_lower = py$te_lower,
+    te_upper = py$te_upper
+  ) %>%
+  cbind(X_test_comp, .)
+
+gen_econml_vis(res_econml_dt=res_dml_orf_v2, het_vars =het_vars_v2)
+```

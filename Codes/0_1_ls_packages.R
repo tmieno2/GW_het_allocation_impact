@@ -24,6 +24,7 @@ library(lubridate)
 
 # ==  visualization == #
 library(ggplot2)
+library(tmap)
 
 
 # == ML == #

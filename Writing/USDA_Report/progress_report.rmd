@@ -1,6 +1,6 @@
 ---
 title: "How do groundwater allocation limits affect farmers’ groundwater use differently?"
-author: Shunkei Kakimoto^[Department of Agricultural Economics, University of Nebraska-Lincoln 102 Filley Hall 1625 Arbor Drive Lincoln, NE 68583, USA, E-mail address; skakimoto3@hunskers.unl.edu] and Taro Mieno^[Department of Agricultural Economics, University of Nebraska-Lincoln, Lincoln, NE 68583, USA]
+
 output:
   bookdown::word_document2:
     fig_caption: yes
@@ -13,6 +13,72 @@ bibliography: temp.bib
 eqnPrefix: 
       - "Eq"
 ---
+
+---
+title: "How do groundwater allocation limits affect farmers’ groundwater use differently?"
+author: Taro Mieno, Shunkei Kakimoto, Karina Schoengold 
+output:
+  html_document:
+    number_sections: yes
+    theme: readable
+    toc_float: yes
+    toc: yes
+    toc_depth: 3
+geometry: margin=1in
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(here)
+
+here::i_am("")
+
+# opts_knit$set(root.dir = "")
+# opts_knit$set(root.dir = here())
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  cache = FALSE,
+  comment = NA,
+  message = FALSE,
+  warning = FALSE,
+  tidy = FALSE,
+  cache.lazy = FALSE,
+  #--- figure ---#
+  dpi = 400,
+  fig.width = 7.5,
+  fig.height = 5,
+  out.width = "750px",
+  out.height = "500px"
+)
+
+# /*===== Basic Packages  =====*/
+# /*---- Data Wrangling ----*/
+library(data.table)
+library(tidyverse)
+library(DescTools)
+library(maps)
+
+# /*---- Visualization ----*/
+library(RColorBrewer)
+library(patchwork)
+library(ggplot2)
+library(ggthemes)
+library(ggpubr)
+library(viridis)
+library(grid)
+library(gridExtra)
+library(GGally)
+
+# /*---- Model Summary ----*/
+library(stats)
+library(modelsummary)
+library(flextable)
+library(officer)
+library(officedown)
+library(gt)
+
+```
 
 ```{r echo = F, include = FALSE, cache = F}
 library(knitr)
@@ -63,16 +129,19 @@ library(rattle)
 ```
 
 # Summary
-+ Analysis focused on estimating the heterogeneous impact of groundwater allocation policy on farmers' irrigation activity in Nebraska during 2008-2015, and revealing which factor is the main driver to cause such a heterogeneity.
++ This study examined the heterogeneous impact of groundwater allocation policy on farmers' irrigation activity in Nebraska, and revealing which factor is the main driver to cause such a heterogeneity.
 
 + Results suggest that the impact is heterogeneous depending on in-season total precipitation. Farmers in regions where precipitation is low are more greatly affected by the allocation limits as compared to regions where precipitation is high. 
 
-+ This implies that LR may be able to enhance farming profit by devising allocation limits within the NRD that are increased (or decreased) based on spatial gradients in precipitation, while maintaining the same level of overall groundwater use as the current uniform allocation limit design.
++ This implies that the allocation limits should be adjusted based on precipitation (according to spatial gradients in precipitation), while maintaining the same the total allocation limit. This would reduce the economic damage of the regulation to farmers.
 
 
 
 # Data
-+ We used well-level groundwater extraction data focusing on two Nebraska's NRDs: Lower Republican (LR) and Tri-Basin(TB) during 2008-2015. Throughout the period, LR (treatment group) had an allocation of 9 acre-inches per year, while TB (control group) had no allocation. Using five-mile buffer, we examine water use around the border between LR and TB. Metered groundwater use data was collected from the Republican River Compact Administration (RRCA) for irrigation wells located in LR and TB. 
+
++ This study used well-level groundwater extraction data focusing on two Nebraska's NRDs: Lower Republican (LR) and Tri-Basin(TB) during 2008-2015. Throughout the period, LR (treatment group) had an allocation of 9 acre-inches per year, while TB (control group) had no allocation. Using five-mile buffer, we examine water use around the border between LR and TB. Metered groundwater use data was collected from the Republican River Compact Administration (RRCA) for irrigation wells located in LR and TB. 
+
+
 
 ```{r map-well, echo=F}
 

@@ -1,0 +1,642 @@
+# Set up
+
+```{r}
+# === setup === #
+library(here)
+library(flextable)
+source(here("GitControlled/Codes/0_1_ls_packages.R"))
+source(here("GitControlled/Codes/0_0_functions.R"))
+```
+
+```{r}
+set_flextable_defaults(
+  font.family = "Times New Roman"
+)
+
+theme_figure <-
+	theme_bw() %>%
+  	theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank()
+    # rect = element_blank()
+  )
+```
+
+# Data
+
+```{r}
+# === NRD boundary === #
+nrd_bound <- 
+ here("Shared/Data/WaterAnalysis/NRD_bd/BND_NaturalResourceDistricts_DNR.shp") %>%
+ st_read() %>%
+ filter(NRD_Name %in% c("Lower Republican", "Tri-Basin")) %>%
+ st_transform(4269)
+
+#/*--------------------------------*/
+#' ## Raw Data
+#/*--------------------------------*/
+
+# === All well data === #
+ir_data <- 
+  here("Shared/Data/WaterAnalysis/ir_data_nw.rds") %>%
+  readRDS() %>%
+  data.table() %>%
+  .[source %in% c('Meter','METER','metered') & nrdname %in% c("Lower Republican", "Tri-Basin")] %>%
+  .[,owner_name := paste0(firstname, "_", lastname)] %>%
+  .[,nrd_owner_name := paste0(nrdname, " ", owner_name) ] %>%
+  .[,`:=`(
+  	in_5mi = as.factor(in_5mi),
+  	in_10mi = as.factor(in_10mi)
+  	)]
+
+# === Regression Data (period: 2008-2012)  === #
+reg_data <- 
+  here("Shared/Data/WaterAnalysis/w_analysis_dt.rds") %>%
+  readRDS() %>%
+  .[,nrd_owner_name := paste0(nrdname, " ", owner_name)] %>%
+  .[year %in% 2008:2012 & usage <= 45]
+
+#/*--------------------------------*/
+#' ## Processed Data
+#/*--------------------------------*/
+# + Each data only contains data points where the owner have their wells only inside the buffer 
+# + county information was a slightly modified so that each owner has his wells inside a single county. 
+
+# === data with 5 mile buffer === #
+reg_data_5mi_raw <- 
+	here("Shared/Data/WaterAnalysis/reg_data_5mi_raw.rds") %>%
+	readRDS()
+
+# - Data on TB - #
+TB_5mi <- reg_data_5mi_raw[nrdname=="Tri-Basin",]
+# - Data on LR - #
+LR_5mi <- reg_data_5mi_raw[nrdname=="Lower Republican",]
+
+
+# === data with 10 mile buffer === #
+reg_data_10mi_raw <- 
+	here("Shared/Data/WaterAnalysis/reg_data_10mi_raw.rds") %>%
+	readRDS()
+
+# - Data on TB - #
+TB_10mi <- reg_data_10mi_raw[nrdname=="Tri-Basin",]
+# - Data on LR - #
+LR_10mi <- reg_data_10mi_raw[nrdname=="Lower Republican",]
+```
+
+
+# Figure
+
+## well maps
+
+```{r}
+map_5mi <- 
+	ggplot() +
+	geom_sf(data=nrd_bound)+
+	geom_sf(data=st_as_sf(ir_data, coords = c("longdd","latdd"), crs = 4269), aes(color=factor(in_5mi)), size=0.05) +
+	theme_bw() + 
+  	theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    legend.position = "bottom"
+    # legend.position="none"
+	) +
+  	guides(color = guide_legend(title = "", override.aes = list(size=1))) +
+  	scale_color_hue(labels = c("Wells inside of the buffer", "Wells outside of the buffer"))
+  	# ggtitle("(1) Wells within the 5 mile buffer")
+  	
+
+# map_10mi <- 
+# 	ggplot() +
+# 	geom_sf(data=nrd_bound)+
+# 	geom_sf(data=st_as_sf(ir_data, coords = c("longdd","latdd"), crs = 4269), aes(color=factor(in_10mi)), size=0.05) +
+# 	theme_bw() + 
+#   theme(
+#     plot.title = element_text(hjust = 0.5),
+#     axis.text.x = element_blank(),
+#     axis.text.y = element_blank(),
+#     axis.ticks = element_blank()
+#     # legend.position = "bottom"
+# 	) +
+#   	guides(color = guide_legend(title = "", override.aes = list(size=1))) +
+#   	scale_color_hue(labels = c("Wells inside of the buffer", "Wells outside of the buffer")) +
+#   	ggtitle("(2) Wells within the 10 mile buffer")
+```
+
+
+# Table
+
+## Number of well owners in the LR
+
+```{r}
+# === A list of owners who owns farmland outside of the 5 and 10 mi buffer in LR side === #
+ls_owners_out5mi_LR <- 
+  ir_data %>%
+  .[nrdname=="Lower Republican" & in_5mi==0, nrd_owner_name] %>%
+  unique()
+
+ls_owners_out10mi_LR <- 
+  ir_data %>%
+  .[nrdname=="Lower Republican" & in_10mi==0, nrd_owner_name] %>%
+  unique()
+
+# === Create "both_InOut_5mi" and "both_InOut_10mi" index === #
+# Ex) both_InOut_5mi==1, if an landowner has farmland outside of the 5 miles in LR side
+reg_data <- 
+  reg_data %>% 
+  .[, `:=`(
+    both_InOut_5mi_LR = ifelse(nrd_owner_name %in% ls_owners_out5mi_LR, 1, 0),
+    both_InOut_10mi_LR = ifelse(nrd_owner_name %in% ls_owners_out10mi_LR, 1, 0)
+    )]
+
+num_owner_origianl <- 
+	reg_data[nrdname == "Lower Republican" & in_5mi==1, nrd_owner_name] %>%
+	unique() %>%
+	length()
+
+count_InOut5mi <- 
+	reg_data %>%
+	.[nrdname == "Lower Republican" & in_5mi==1, .(count = uniqueN(nrd_owner_name)), by = both_InOut_5mi_LR]
+```
+
+## The number of well owners in the LR categorized by the number of wells owned
+
+
+```{r}
+# unique(LR_5mi$nrd_owner_name) %>% length()
+
+# count how many of field each farmer has
+cnt_by_ownr <-  
+	LR_5mi %>%
+  	distinct(., longdd, latdd, .keep_all = TRUE) %>%
+  	data.table() %>%
+  .[, .(num_fields = .N), by = .(nrd_owner_name)] %>%
+  # count the number of farmers by the number of fields they have
+  .[, .(num_farmers = .N), by = num_fields] %>%
+  .[order(num_fields)]
+
+
+tbl_cnt_by_ownr <-
+	cnt_by_ownr %>%
+  	flextable(.) %>%
+  	set_header_labels(
+    	num_fields = "#Wells owned",
+    	num_farmers = "#Irrigators"
+  	) %>%
+  	flextable::align(align = "center", part = "all") %>%
+  	autofit()
+
+```
+
+
+# CF Analysis
+
+## 5 mile buffer
+
+### Data Aggregation
+
+```{r}
+# /*===== LR data =====*/
+LR_5mi_y_owner <-
+  LR_5mi %>%
+  .[,.(
+    usage = weighted.mean(usage, acres/sum(acres)),
+    treat2 = mean(treat2),
+    # --- soil --- #
+    silttotal_r = weighted.mean(silttotal_r, acres/sum(acres)),
+    claytotal_r = weighted.mean(claytotal_r, acres/sum(acres)),
+    slope_r = weighted.mean(slope_r, acres/sum(acres)),
+    ksat_r = weighted.mean(ksat_r, acres/sum(acres)),
+    awc_r = weighted.mean(awc_r, acres/sum(acres)),
+    # --- weather --- #    
+    pr_in = weighted.mean(pr_in, acres/sum(acres)),
+    pet_in = weighted.mean(pet_in, acres/sum(acres)),
+    gdd_in = weighted.mean(gdd_in, acres/sum(acres)),
+    # --- tr --- #
+    cntyname_fix = unique(cntyname_fix)
+  ), by = .(nrd_owner_name, year)] %>%
+  .[,county_year := paste0(cntyname_fix, "_", year)]
+
+# /*===== TB data =====*/
+se_vars <- names(LR_5mi_y_owner)
+
+TB_5mi_y_well <-
+  TB_5mi %>%
+  # use "cntyname", not "cntyname_fix"
+  .[,county_year := paste0(cntyname, "_", year)] %>%
+  .[, ..se_vars]
+
+# /*===== Put these data together =====*/
+reg_data_5mi <- bind_rows(LR_5mi_y_owner, TB_5mi_y_well)
+```
+
+### CF Analysis
+
+```{r}
+# /*===== control variables =====*/
+# remove gdd_in
+cov_ls <- c(
+  # --- weather --- #
+  "pr_in","pet_in",
+  # --- soil --- #
+  "silttotal_r", "claytotal_r", "slope_r", "ksat_r", "awc_r"
+  )
+```
+
+```{r}
+data <- reg_data_5mi
+Y_5mi <- data[, usage]
+T_5mi <- data[, treat2]
+X_5mi <- data[, ..cov_ls]
+cl_var_5mi <- data[, county_year] %>% factor()
+
+#/*--------------------------------*/
+#' ## 1st CF
+#/*--------------------------------*/
+set.seed(23456)
+
+forest_W_cl_5mi <- regression_forest(
+  X_5mi, T_5mi, 
+  clusters = cl_var_5mi,
+  num.trees = 4000)
+W_hat_5mi <- predict(forest_W_cl_5mi)$predictions
+# plot(density(W_hat_5mi))
+
+forest_Y_cl_5mi <- regression_forest(
+  X_5mi, Y_5mi, 
+  clusters = cl_var_5mi,
+  num.trees = 4000)
+Y_hat_5mi <- predict(forest_Y_cl_5mi)$predictions
+
+cf_raw_cl_5mi <- causal_forest(
+  X=X_5mi,
+  Y=Y_5mi,
+  W=T_5mi, 
+  Y.hat = Y_hat_5mi, 
+  W.hat = W_hat_5mi,
+  clusters = cl_var_5mi,
+  tune.parameters = "all",
+  num.trees = 4000
+)
+
+# cf_raw_cl_5mi$tuning.output
+# test_calibration(cf_raw_cl_5mi)
+
+# === CATE === #
+# Overall effectiveness of the allocation limit
+ate_5mi <- average_treatment_effect(cf_raw_cl_5mi, target.sample = "all")
+ci_ate_ci_5mi <- c(
+	ate_5mi[[1]] - 1.96*ate_5mi[[2]],
+	ate_5mi[[1]] + 1.96*ate_5mi[[2]]
+	)
+
+
+hist_oob_cate <- 
+  predict(cf_raw_cl_5mi) %>%
+  ggplot(.) +
+  geom_histogram(aes(predictions), bins = 200) +
+  xlab("Out-of-bag CATE estimates")
+
+
+# === Variable of importance === #
+varimp_5mi = variable_importance(cf_raw_cl_5mi)
+
+tb_varimp_dt_5mi <- 
+	data.table(
+		Variable = cov_ls,
+		Importance = varimp_5mi[,1]
+		) %>%
+	.[order(Importance, decreasing = TRUE)] %>%
+	flextable()
+
+selected_vars_5mi = which(varimp_5mi > mean (varimp_5mi))
+se_cov_5mi <- data[,cov_ls[selected_vars_5mi], with=FALSE]
+
+# === Visualization === #
+vis_cf_raw_cl_5mi <- gen_impact_viz(
+  cf_res= cf_raw_cl_5mi,
+  data_base=data,
+  treat_var='treat2',
+  var_ls= cov_ls,
+  var_ls_int = cov_ls
+)
+
+
+#/*--------------------------------*/
+#' ## 2nd CF
+#/*--------------------------------*/
+cf_res_cl_5mi <- causal_forest(
+  X=se_cov_5mi,
+  Y=Y_5mi,
+  W=T_5mi, 
+  Y.hat = Y_hat_5mi, 
+  W.hat = W_hat_5mi,
+  clusters = cl_var_5mi,
+  num.trees = 4000,
+  tune.parameters = "all",
+  # tune.parameters = c(""),
+)
+
+# === Variable of importance === #
+tb_varimp_dt_5mi_res <- 
+  data.table(
+    Variable = cov_ls[selected_vars_5mi],
+    Importance = variable_importance(cf_res_cl_5mi)[,1]
+    ) %>%
+  .[order(Importance, decreasing = TRUE)] %>%
+  flextable()
+
+# === Visualization === #
+
+vis_cf_res_cl_5mi <-
+  gen_impact_viz(
+  cf_res= cf_res_cl_5mi,
+  data_base=data,
+  treat_var='treat2',
+  var_ls= cov_ls[selected_vars_5mi],
+  var_ls_int = cov_ls[selected_vars_5mi]
+) 
+# vis_cf_res_cl_5mi
+```
+
+
+## Spatial Distribution of awc
+
+```{r}
+LR_5mi_awc <-
+  copy(LR_5mi) %>%
+  unique(., by = c("latdd", "longdd")) %>%
+  .[, awc_index := ifelse(awc_r > 0.21, "High", "Low")] %>%
+  st_as_sf(., coords = c("longdd","latdd"), crs = 4269)
+
+vis_awc <- 
+  ggplot() +
+    geom_sf(data=nrd_bound %>% filter(NRD_Name == "Lower Republican")) +
+    geom_sf(data=LR_5mi_awc, aes(color=awc_index), size=0.5) +
+    scale_fill_viridis_d() +
+    theme_bw() + 
+    theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    legend.position = "bottom"
+    # legend.position="none"
+  ) +
+    guides(color = guide_legend(title = "Level of awc", override.aes = list(size=1))) +
+    scale_color_hue(
+      labels = c(
+        "Higher than 0.21",
+        "Lower than 0.21")
+      )
+
+```
+
+## Spatial Gradiation of precipitation
+
+```{r}
+# /*===========================================*/
+#'=  Preparation =
+# /*===========================================*/
+# Goal: I want to create a polygon of 5 mile buffer in the LR side
+
+# # === 2D NRD boundary === #
+# nrd_bound_2d <- st_transform(nrd_bound, 32614)
+
+# # === Find the common boundary === #
+# bd_interiors <- st_intersection(nrd_bound_2d) %>%
+#     filter(n.overlaps == 2)
+
+# # === 5 mile buffer === #
+# buffer_miles <- 5 # in miles
+# buffer_meter <- 1609.344*buffer_miles # in meters
+
+# bd_buffer <- 
+#     st_buffer(bd_interiors, dist =  buffer_meter,
+#     # singleSide = TRUE
+#     ) %>%
+#     st_geometry() %>%
+#     st_intersection(., filter(nrd_bound_2d, NRD_Name == "Lower Republican"))
+
+# # ggplot() +
+# #     geom_sf(data=nrd_bound_2d) +
+# #     geom_sf(data=st_transform(bd_interiors, 32614), color="red") +
+# #     geom_sf(data=bd_buffer, fill="green", size=NA, alpha=0.6)
+
+# # === Cut the irrelevant part (edge) of the buffer === #
+# bbox_buffer <- 
+#     bd_buffer %>%
+#     st_bbox()
+
+# bbox_bd <- 
+#     bd_interiors %>%
+#     st_bbox()
+
+# # xmin
+# bbox_buffer[1] <- bbox_bd[["xmin"]]
+
+# # change to sf object
+# LR_5mi_box <- st_as_sfc(bbox_buffer)
+
+# --- Check: interior boundary --- #
+# ggplot() +
+#     geom_sf(data=nrd_bound_2d) +
+#     geom_sf(data=bd_interiors, color="red") +
+#     geom_sf(data=LR_5mi_box, fill="green", size=NA, alpha=0.6)
+
+
+# /*===========================================*/
+#'=  Raster operation =
+# /*===========================================*/
+
+# === Create data   === #
+pr_dist_5mi <- function(crop_layer, year) {
+  # crop_layer = LR_5mi_box
+  # crop_layer = filter(nrd_bound, NRD_Name == "Lower Republican")
+  # year = 2010
+
+  # /*===== A list of in-season days =====*/
+  ls_days_in <- 
+    paste0("precipitation_amount_day=", 
+      seq.int(
+        from = (ymd(paste0(year, "-04-01")) - ymd("1900-01-01")) %>% as.numeric,
+        to = (ymd(paste0(year, "-09-30")) - ymd("1900-01-01")) %>% as.numeric
+      )
+    )
+  
+  temp <- 
+    here(paste0("Shared/Data/gridMET-historical/pr_", year, ".nc")) %>%
+    terra::rast()
+
+  temp_crop <- 
+    terra::crop(temp, vect(st_transform(crop_layer, crs = terra::crs(temp))), mask = TRUE)
+
+    # select in-season days 
+    temp_crop_in <- temp_crop[[ls_days_in]]
+
+    # --- pr: mm to inch and take a summation--- #
+    temp_crop_in_inch <- temp_crop_in * 0.0393701
+    temp_crop_in_inch_sum <- sum(temp_crop_in_inch)
+
+    names(temp_crop_in_inch_sum) <- paste0("pr_in:", year)
+
+    return(temp_crop_in_inch_sum)
+}
+
+# plot(pr_dist_5mi(2012))
+
+pr_all <- 
+  lapply(2008:2012, 
+    function(x) pr_dist_5mi(
+      # crop_layer = LR_5mi_box, 
+      crop_layer = filter(nrd_bound, NRD_Name == "Lower Republican"), 
+      year = x)
+  ) %>%
+  do.call(c,.)
+
+tbl_pr_all <-  
+  as.data.frame(pr_all, xy = TRUE) %>%
+  data.table() %>%
+  melt(., id.vars = c("x", "y"))
+
+ vis_pr <- 
+  ggplot() +
+    geom_raster(data = tbl_pr_all, aes(x = x, y = y, fill = value)) +
+    facet_wrap(~ variable) +
+    scale_fill_viridis_c() +
+    theme(
+      legend.position = "bottom"
+    ) +
+    labs(fill = "In-season precipitation (inches)") 
+
+# pr_dt <- 
+#   data.table(as.data.frame(pr_all, xy = TRUE)) %>%
+#   datasummary(
+#   `pr_in:2008` + `pr_in:2009` + `pr_in:2010` + `pr_in:2011` + `pr_in:2012`~ Mean + SD + Min + Max,
+#   data = .
+# )
+#   .[, .(summarise(value)), by = variable ]
+```
+
+
+
+
+## 10 mile buffer
+
+```{r}
+# /*===== LR data =====*/
+LR_10mi_y_owner <-
+  LR_10mi %>%
+  .[,.(
+    usage = weighted.mean(usage, acres/sum(acres)),
+    treat2 = mean(treat2),
+    # --- soil --- #
+    silttotal_r = weighted.mean(silttotal_r, acres/sum(acres)),
+    claytotal_r = weighted.mean(claytotal_r, acres/sum(acres)),
+    slope_r = weighted.mean(slope_r, acres/sum(acres)),
+    ksat_r = weighted.mean(ksat_r, acres/sum(acres)),
+    awc_r = weighted.mean(awc_r, acres/sum(acres)),
+    # --- weather --- #    
+    pr_in = weighted.mean(pr_in, acres/sum(acres)),
+    pet_in = weighted.mean(pet_in, acres/sum(acres)),
+    gdd_in = weighted.mean(gdd_in, acres/sum(acres)),
+    # --- tr --- #
+    cntyname_fix = unique(cntyname_fix)
+  ), by = .(nrd_owner_name, year)] %>%
+  .[,county_year := paste0(cntyname_fix, "_", year)]
+
+# /*===== TB data =====*/
+se_vars <- names(LR_10mi_y_owner) %>% .[.!="acres"]
+
+TB_10mi_y_well <-
+  TB_10mi %>%
+  .[,county_year := paste0(cntyname, "_", year)] %>%
+  .[, ..se_vars]
+
+# /*===== Put these data together =====*/
+reg_data_10mi <- bind_rows(LR_10mi_y_owner, TB_10mi_y_well)
+```
+
+```{r}
+data <- reg_data_10mi
+Y_10mi <- data[, usage]
+T_10mi <- data[, treat2]
+X_10mi <- data[, ..cov_ls]
+cl_var_10mi <- data[, county_year] %>% factor()
+
+#/*--------------------------------*/
+#' ## 1st CF
+#/*--------------------------------*/
+set.seed(23456)
+
+forest_W_cl_10mi <- regression_forest(
+  X_10mi, T_10mi, 
+  clusters = cl_var_10mi,
+  num.trees = 4000)
+W_hat_10mi <- predict(forest_W_cl_10mi)$predictions
+
+forest_Y_cl_10mi <- regression_forest(
+  X_10mi, Y_10mi, 
+  clusters = cl_var_10mi,
+  num.trees = 4000)
+Y_hat_10mi <- predict(forest_Y_cl_10mi)$predictions
+
+cf_raw_cl_10mi <- causal_forest(
+  X=X_10mi,
+  Y=Y_10mi,
+  W=T_10mi, 
+  Y.hat = Y_hat_10mi, 
+  W.hat = W_hat_10mi,
+  clusters = cl_var_10mi,
+  tune.parameters = "all",
+  num.trees = 4000
+)
+
+varimp_10mi = variable_importance(cf_raw_cl_10mi)
+
+tb_varimp_dt_10mi <- 
+	data.table(
+		variable = cov_ls,
+		importance = varimp_10mi[,1]
+		) %>%
+	.[order(importance, decreasing = TRUE)] %>%
+	flextable()
+
+selected_vars_10mi = which(varimp_10mi > mean (varimp_10mi))
+# selected_vars_10mi = which(varimp_10mi/mean(varimp_10mi) > 0.2)
+se_cov_10mi <- data[,cov_ls[selected_vars_10mi], with=FALSE]
+
+vis_cf_raw_cl_10mi <- gen_impact_viz(
+  cf_res= cf_raw_cl_10mi,
+  data_base=data,
+  treat_var='treat2',
+  var_ls= cov_ls,
+  var_ls_int = cov_ls
+)
+vis_cf_raw_cl_10mi
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

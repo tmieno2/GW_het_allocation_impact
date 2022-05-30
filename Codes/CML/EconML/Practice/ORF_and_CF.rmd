@@ -1,0 +1,157 @@
+---
+title: "Orthogonal Random Forest and Causal Forest: Use Cases and Examples"
+author: "Shunkei Kakimoto"
+date: ""
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+library(knitr)
+library(here)
+library(reticulate)
+library(tidyverse) # for data wrangling and visualization
+library(recipes)   # for data preprocessing
+library(data.table)
+
+opts_knit$set(root.dir = here())
+
+opts_chunk$set(
+  fig.align = "center", 
+  fig.retina = 5,
+  warning = FALSE, 
+  message = FALSE,
+  cache = FALSE, # <-- T
+  cache.lazy = FALSE,
+  echo = TRUE
+  )
+```
+
+## Question
++ How to open R project from terminus?
+
+
+## I need to set the path manually instead using of here()
+
++ **Problem**: The path to the project `here()` should specify does not correct
+  * It should be: `/Users/shunkeikakimoto/Dropbox/ResearchProject/HeterogeneousAllocation`
+  * but, whenever I use `here()` on Rmarkdown, the path is set `/Users/shunkeikakimoto/Dropbox/ResearchProject/HeterogeneousAllocation/GitControlled/GW_het_allocation_impact`
+  * I do not understand why. Maybe because of git?
+
+
+```{r}
+here()
+use_python("/Users/shunkeikakimoto/Dropbox/ResearchProject/HeterogeneousAllocation/myenv/bin/python")
+use_virtualenv("/Users/shunkeikakimoto/Dropbox/ResearchProject/HeterogeneousAllocation/myenv/bin/activate_this.py")
+
+py_config()
+```
+
+# Setup
+
+```{python}
+import econml
+
+# Main imports
+from econml.orf import DMLOrthoForest, DROrthoForest
+from econml.dml import CausalForestDML
+from econml.sklearn_extensions.linear_model import WeightedLassoCVWrapper, WeightedLasso, WeightedLassoCV
+
+# Helper imports
+import numpy as np
+from itertools import product
+from sklearn.linear_model import Lasso, LassoCV, LogisticRegression, LogisticRegressionCV
+import matplotlib.pyplot as plt
+
+# %matplotlib inline #this is not correct syntax for Python (?)
+```
+
+# Example Usage with Continuous Treatment Synthetic Data
+
+```{python}
+# Treatment effect function
+def exp_te(x):
+    return np.exp(2*x[0])
+```
+
+```{python}
+# DGP constants
+np.random.seed(123)
+n = 1000
+n_w = 30
+support_size = 5
+n_x = 1
+# Outcome support
+support_Y = np.random.choice(range(n_w), size=support_size, replace=False)
+coefs_Y = np.random.uniform(0, 1, size=support_size)
+epsilon_sample = lambda n: np.random.uniform(-1, 1, size=n)
+# Treatment support 
+support_T = support_Y
+coefs_T = np.random.uniform(0, 1, size=support_size)
+eta_sample = lambda n: np.random.uniform(-1, 1, size=n) 
+
+# Generate controls, covariates, treatments and outcomes
+W = np.random.normal(0, 1, size=(n, n_w))
+X = np.random.uniform(0, 1, size=(n, n_x))
+# Heterogeneous treatment effects
+TE = np.array([exp_te(x_i) for x_i in X])
+T = np.dot(W[:, support_T], coefs_T) + eta_sample(n)
+Y = TE * T + np.dot(W[:, support_Y], coefs_Y) + epsilon_sample(n)
+
+# ORF parameters and test data
+subsample_ratio = 0.3
+lambda_reg = np.sqrt(np.log(n_w) / (10 * subsample_ratio * n))
+X_test = np.array(list(product(np.arange(0, 1, 0.01), repeat=n_x)))
+```
+
+## Train Estimator
+
+```{python}
+est = DMLOrthoForest(
+    n_trees=1000, min_leaf_size=5,
+    max_depth=50, subsample_ratio=subsample_ratio,
+    model_T=Lasso(alpha=lambda_reg),
+    model_Y=Lasso(alpha=lambda_reg),
+    model_T_final=WeightedLasso(alpha=lambda_reg),
+    model_Y_final=WeightedLasso(alpha=lambda_reg),
+    global_residualization=False,
+    random_state=123)
+```
+
+```{python}
+est.fit(Y, T, X=X, W=W, inference="blb")
+```
+
+```{python}
+# Calculate treatment effects
+treatment_effects = est.effect(X_test)
+```
+
+```{python}
+# Calculate default (95%) confidence intervals for the test data
+te_lower, te_upper = est.effect_interval(X_test)
+```
+
+```{python}
+res = est.effect_inference(X_test)
+```
+
+```{python}
+res.summary_frame().head()
+```
+
+```{python}
+res.population_summary()
+```
+
+
+
+
+
+
+
+
+
+
+
+
