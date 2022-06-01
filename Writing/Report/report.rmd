@@ -61,17 +61,24 @@ library(gt)
 
 ```
 
+<style type="text/css">
+  body{
+  font-family: "Times New Roman";
+  font-size: 12pt;
+}
+</style>
+
+
 ```{r, include = F, cache = F}
 knit_child(here("GitControlled/Writing/Report/PrepareResults.rmd"), quiet = TRUE)
 ```
 
-
 # Summary
 + This study examined the heterogeneous impact of groundwater allocation policy on farmers' groundwater use in Nebraska, and revealing which factor is the main driver to cause such a heterogeneity.
 
-+ Results suggest that the impact is heterogeneous depending on in-season total precipitation. Farmers in regions where precipitation is low are more greatly affected by the allocation limits as compared to regions where precipitation is high. 
++ Results suggest that the impact is heterogeneous depending on in-season total precipitation. Farmers in regions where precipitation is low are more greatly affected by the allocation limits as compared to regions where precipitation is high. Furthermore, the impact of precipitation varies by the level of soil water holding capacity of a farmland. 
 
-+ This implies that the allocation limits should be adjusted based on precipitation (according to spatial gradients in precipitation), while maintaining the same the total allocation limit. This would reduce the economic damage of the regulation to farmers.
++ This implies that the allocation limits should be adjusted based on precipitation (according to spatial gradients in precipitation) and the level of soil water holding capacity, while maintaining the same the total allocation limit. This would reduce the economic damage of the regulation to farmers.
 
 <br>
 
@@ -138,7 +145,7 @@ In an individual tree of the CF, samples are recursively split into two groups u
 
 # Results
 
-```{r hist-oob-cate, fig.width=6, fig.height=5, fig.cap = "Histgram of out-of-bag CATE estimates"}
+```{r hist-oob-cate, fig.width=5, fig.height=4, fig.cap = "Histgram of out-of-bag CATE estimates"}
 hist_oob_cate
 ```
 
@@ -148,7 +155,7 @@ The conditional average treatment effect (CATE) estimate was `r round(ate_5mi[[1
 
 <br>
 
-```{r vis-cf-raw-cl-5mi, fig.width=10, fig.height=6, fig.cap = "The impact of allocation limits on irrigators' water use (in inches) associated with each covariate"}
+```{r vis-cf-raw-cl-5mi, fig.width=10, fig.height=6, fig.cap = "The impact of allocation limits on irrigators' water usage (in inches) associated with each covariate"}
 vis_cf_raw_cl_5mi
 ```
 
@@ -162,21 +169,17 @@ tb_varimp_dt_5mi %>% knit_print()
 
 Figure \@ref(fig:vis-cf-raw-cl-5mi) shows the impact of each variable on treatment effect. In the figure, the histograms of each independent variable are shown in the top row, and the estimated treatment effects (in inches) are shown in the bottom row. The shaded areas indicate 95% confidence intervals (CI). Table \@ref(tab:tb-varimp-dt-5mi) shows the ranking of important variable. 
 
-Table \@ref(tab:tb-varimp-dt-5mi) suggested the CF used mainly three variables to estimate the treatment effects: water holding capacity (awc_r), in-season total reference grass evaportranspiration (pet_in), and in-season total precipitation (pr_in), and these variables were used to split nodes of each tree in the forest more than 60% of the times. Interestingly, most of the soil characteristics except water holding capacity were not used often to measure the treatment effect heterogeneity. Indeed, in Figure \@ref(fig:vis-cf-raw-cl-5mi), the predicted treatment effects associated with those soil characteristics show relatively wide CI or does not change dramatically.
+Table \@ref(tab:tb-varimp-dt-5mi) suggested the CF used mainly three variables to estimate the treatment effects: soil water holding capacity (`awc`), in-season total reference grass evaportranspiration (`pet_in`), and in-season total precipitation (`pr_in`), and these variables were used to split nodes of each tree in the forest more than 60% of the times. Interestingly, most of the soil characteristics except water holding capacity were not used often to measure the treatment effect heterogeneity. Indeed, in Figure \@ref(fig:vis-cf-raw-cl-5mi), the predicted treatment effects associated with those soil characteristics show relatively wide CI or does not change dramatically.
 
-The impact of the allocation limit suddenly becomes significantly smaller in the areas where water holding capacity is more than 0.21 cm/cm. This is because such farmlands are able to hold more amount of water into the soil through supressing water runoff, and therefore they require to less amount of irrigation to satisfy soil water demand.  <!--  Figure \@ref(fig:LR-5mi-awc) shows the distribution of wells color differentiated by whether the awc level at the well location is higher or lower than 0.21 cm/cm. The distribution does not any spatial pattern.  -->
+The impact of the allocation limit suddenly becomes significantly smaller in the areas where soil water holding capacity is more than 0.21 cm/cm. This is because such farmlands are able to hold more amount of water into the soil through reducing water runoff, and therefore they require to less amount of irrigation to satisfy soil water demand.  
 
 
-<!-- ```{r, LR-5mi-awc, fig.width=7, fig.height=4, fig.cap = "Spatial Distribution of the level of water holding capacity by well location"}
-vis_awc
-``` -->
-
-<br>
-
-Two weather variables which are in-season total reference grass evaportranspiration (pet_in) and precipitation (pr_in) showed almost the same degree of importance in Table \@ref(tab:tb-varimp-dt-5mi). But Figure \@ref(fig:vis-cf-raw-cl-5mi) is suggesting that the treatment effects more varies by in-season total precipitations (in inches). For example, in areas in which in-season total precipitation was high, say 25 inches, an irrigator reduced his water usage by about 1.8 inches on average than what would be without allocation limit. Meanwhile, the areas in which in-season total precipitation was low, say 15 inches, an irrigator reduced his water usage by about 2.8 inches on average than the counterfactual outcome. This means that the current groundwater allocation design may be more binding in areas with low precipitation compared to the areas with high precipitation. 
+Two weather variables which are in-season total reference grass evaportranspiration and precipitation showed almost the same degree of importance in Table \@ref(tab:tb-varimp-dt-5mi). But Figure \@ref(fig:vis-cf-raw-cl-5mi) is suggesting that the treatment effects more varies by in-season total precipitations (in inches). For example, in areas in which in-season total precipitation was high, say 25 inches, an irrigator reduced his water usage by about 1.8 inches on average than what would be without allocation limit. Meanwhile, the areas in which in-season total precipitation was low, say 15 inches, an irrigator reduced his water usage by about 2.8 inches on average than the counterfactual outcome. This means that the current groundwater allocation design may be more binding in areas with low precipitation compared to the areas with high precipitation. 
 
 
 <br>
+
+## Discussion
 
 ```{r vis-pr, fig.width=10, fig.height=5.5, fig.cap = "Spatial distribution of trends in seasonal precipitation in the LR from 2008 to 2012"}
 vis_pr
@@ -188,7 +191,20 @@ As \@ref(fig:vis-pr) is showing, there exists a large spatial trend in seasonal 
 
 Since the results show that in the low-precipitation areas, the current groundwater allocation policy creates a greater economic loss to save the same amount of groundwater compared to high-precipitation areas. Therefore, instead, we should impose a higher allocation limit on the low-precipitation area (e.g, the eastern portion of the LR) and, we should impose a lower allocation limit on the high-precipitation areas (e.g, the western portion of the LR). By assigning spatially varying allocation limits while keeping the total allocation amount the same as the current level, it could save the same amount of groundwater with less economic damage to irrigators. 
 
-In addition, in such a spatially differentiated allocation according to the precipitation gradient, we might be able to further differentiate the allocation for each well based on the level of water holding capacity at the site. That is, considering the result showing significant heterogenous impact of water holding capacity, we could assign higher (lower) allocation limit on the farmland with low (high) water holding capacity. 
+
+<br>
+
+```{r vis-pr-awc, fig.width=10, fig.height=5.5, fig.cap = "The impact of allocation limit on irrigators' water usage (in inches) for areas with low and high soil water holding capacity"}
+vis_pr_awc
+```
+
+<br>
+
+In addition, in such a spatially differentiated allocation according to the precipitation gradient, we might be able to further differentiate the allocation limit at well-level based on the level of water holding capacity. It is reasonable that the impact of precipitation on the treatment effects vary depending on the level of water holding capacity of the farmland. For example, the impact of precipitation on treatment effect would be smaller for the farmland with high water holding capacity. To see the interaction effect between water holding capacity and precipitation, we predicted treatment effects with varying precipitation on two different testing datasets. In the first dataset the low value of `awc` (10 percentile of `awc`, `r format(round(quantile(reg_data_5mi[,awc], prob=0.1), digits=3), nsmall = 3)[[1]]`cm/cm) was selected, and the second dataset the high value of  `awc` (90 percentile of `awc`, `r format(round(quantile(reg_data_5mi[,awc], prob=0.9), digits=3), nsmall = 3)[[1]]`cm/cm) was selected. Figure \@ref(fig:vis-pr-awc) shows the results. As expected, the impact of precipitation is larger in the area where `awc` is low. Furthermore, while the areas with low `awc` show varying impact of precipitation in a range from -3 inches to -1.9 inches , the areas with high `awc` show relatively consistent impact of precipitation around -1 inch. 
+In summary, even though the precipitation is the same level, its impact on the effectiveness of allocation policy is different by the level of soil water holding capacity of the field. 
+
+Considering the interactive effects between precipitation and field's water holding capacity, it would be preferable to account for the difference in soil water holding capacity by farmland to achieve higher economic efficiency. For example, after differentiating groundwater allocation limit by region based on spatial gradients in precipitation, we could determine whether further restriction or additional allocation is necessary based on the level of soil water holding capacity by well. 
+
 
 
 

@@ -231,7 +231,9 @@ TB_5mi_y_well <-
   .[, ..se_vars]
 
 # /*===== Put these data together =====*/
-reg_data_5mi <- bind_rows(LR_5mi_y_owner, TB_5mi_y_well)
+reg_data_5mi <- 
+  bind_rows(LR_5mi_y_owner, TB_5mi_y_well)
+names(reg_data_5mi) <- str_replace(names(reg_data_5mi), "_r", "")
 ```
 
 ### CF Analysis
@@ -243,7 +245,7 @@ cov_ls <- c(
   # --- weather --- #
   "pr_in","pet_in",
   # --- soil --- #
-  "silttotal_r", "claytotal_r", "slope_r", "ksat_r", "awc_r"
+  "silttotal", "claytotal", "slope", "ksat", "awc"
   )
 ```
 
@@ -363,38 +365,6 @@ vis_cf_res_cl_5mi <-
 # vis_cf_res_cl_5mi
 ```
 
-
-## Spatial Distribution of awc
-
-```{r}
-LR_5mi_awc <-
-  copy(LR_5mi) %>%
-  unique(., by = c("latdd", "longdd")) %>%
-  .[, awc_index := ifelse(awc_r > 0.21, "High", "Low")] %>%
-  st_as_sf(., coords = c("longdd","latdd"), crs = 4269)
-
-vis_awc <- 
-  ggplot() +
-    geom_sf(data=nrd_bound %>% filter(NRD_Name == "Lower Republican")) +
-    geom_sf(data=LR_5mi_awc, aes(color=awc_index), size=0.5) +
-    scale_fill_viridis_d() +
-    theme_bw() + 
-    theme(
-    plot.title = element_text(hjust = 0.5),
-    axis.text.x = element_blank(),
-    axis.text.y = element_blank(),
-    axis.ticks = element_blank(),
-    legend.position = "bottom"
-    # legend.position="none"
-  ) +
-    guides(color = guide_legend(title = "Level of awc", override.aes = list(size=1))) +
-    scale_color_hue(
-      labels = c(
-        "Higher than 0.21",
-        "Lower than 0.21")
-      )
-
-```
 
 ## Spatial Gradiation of precipitation
 
@@ -522,6 +492,69 @@ tbl_pr_all <-
 #   .[, .(summarise(value)), by = variable ]
 ```
 
+```{r}
+# /*===========================================*/
+#'=  Interaction effect between precipitation and awc =
+# /*===========================================*/
+seq_pr <- seq(
+  reg_data_5mi[,pr_in] %>% quantile(prob=0.05),
+  reg_data_5mi[,pr_in] %>% quantile(prob=0.95),
+  length = 1000
+  )
+
+# quantile(reg_data_5mi[,awc], prob=0.1)
+# quantile(reg_data_5mi[,awc], prob=0.9)
+
+low_awc_test <- 
+  reg_data_5mi[,..cov_ls] %>%
+  as_tibble(.) %>% 
+  summarize_all(mean) %>%
+  data.table() %>%
+  .[,awc := quantile(reg_data_5mi[,awc], prob=0.1)] %>%
+  .[rep(1,length(seq_pr)),] %>%
+  .[,pr_in := seq_pr]
+
+
+high_awc_test <- 
+  reg_data_5mi[,..cov_ls] %>%
+  as_tibble(.) %>% 
+  summarize_all(mean) %>%
+  data.table() %>%
+  .[,awc := quantile(reg_data_5mi[,awc], prob=0.9)] %>%
+  .[rep(1,length(seq_pr)),] %>%
+  .[,pr_in := seq_pr]
+
+
+# /*===== CF prediction with low awc =====*/
+pred_cf_5mi <- function(data) {
+  pred <- predict(cf_raw_cl_5mi, data, estimate.variance = TRUE)
+  res_pred <- cbind(data, pred) %>%
+    .[, tau_hat_se:=sqrt(variance.estimates)]
+}
+
+pred_low_high_awc <- 
+  lapply(list(low_awc_test, high_awc_test), pred_cf_5mi) %>%
+  bind_rows(., .id = "type") %>%
+  .[, type := ifelse(type==1, 
+    paste0("Low-awc (awc = ", format(round(quantile(reg_data_5mi[,awc], prob=0.1), digits=3), nsmall = 3), "cm/cm)"), 
+    paste0("High-awc (awc = ", format(round(quantile(reg_data_5mi[,awc], prob=0.9), digits=3), nsmall = 3), "cm/cm)")
+    )]
+
+vis_pr_awc <-
+  ggplot(pred_low_high_awc) +
+    geom_line(aes(y=predictions ,x=pr_in)) +
+    geom_ribbon(aes(
+        ymin=predictions-1.96*tau_hat_se,
+        ymax=predictions+1.96*tau_hat_se,
+        x=pr_in
+        ),
+        alpha=0.4
+      ) +
+    facet_grid(~type, scale='free') +
+    xlab("In-season total precipitation (in inches)") +
+    ylab("Treatment effects (in inches)")
+```
+
 
 
 
@@ -559,6 +592,8 @@ TB_10mi_y_well <-
 
 # /*===== Put these data together =====*/
 reg_data_10mi <- bind_rows(LR_10mi_y_owner, TB_10mi_y_well)
+names(reg_data_10mi) <- str_replace(names(reg_data_10mi), "_r", "")
+
 ```
 
 ```{r}
