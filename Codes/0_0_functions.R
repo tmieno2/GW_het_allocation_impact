@@ -359,8 +359,9 @@ gen_impact_viz <- function(cf_res, data_base, treat_var, var_ls, var_ls_int){
     ) +
     geom_histogram(data=data_dist_viz,aes(x=value),color='black',fill='white') +
     facet_grid(type~variable,scale='free') +
+    theme(axis.text.x = element_text(angle = 45))+
     ylab('') +
-    xlab('')
+    xlab('') 
 
   return(g_impact_viz)
 
