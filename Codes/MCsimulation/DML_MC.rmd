@@ -1,0 +1,328 @@
+---
+title: "DML: MC simulation"
+author: "Shunkei Kakimoto"
+output:
+  html_document:
+    number_sections: yes
+    theme: flatly
+    toc_float: yes
+    toc: yes
+    toc_depth: 3
+geometry: margin=1in
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(here)
+
+here::i_am("GitControlled/Codes/MC_econml.rmd")
+
+# opts_knit$set(root.dir = "")
+# opts_knit$set(root.dir = here())
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  cache = FALSE,
+  comment = NA,
+  message = FALSE,
+  warning = FALSE,
+  tidy = FALSE,
+  cache.lazy = FALSE,
+  #--- figure ---#
+  dpi = 400,
+  fig.width = 7.5,
+  fig.height = 5,
+  out.width = "750px",
+  out.height = "500px"
+)
+
+# /*===== Basic Packages  =====*/
+# /*---- Data Wrangling ----*/
+library(data.table)
+library(tidyverse)
+library(DescTools)
+library(maps)
+
+# /*---- Visualization ----*/
+library(RColorBrewer)
+library(patchwork)
+library(ggplot2)
+library(ggthemes)
+library(ggpubr)
+library(viridis)
+library(grid)
+library(gridExtra)
+library(GGally)
+
+# /*---- Model Summary ----*/
+library(stats)
+library(modelsummary)
+library(flextable)
+library(officer)
+library(officedown)
+library(gt)
+```
+
+# Double Machine Learning Examples
++ replicate a EconML notebook: [Double Machine Learning Examples.ipynb](https://github.com/microsoft/EconML/blob/main/notebooks/Double%20Machine%20Learning%20Examples.ipynb)
+
++ Check the performance of 
+  *  CausalForestDML
+  *  DROrthoForest
+  *  DMLOrthoForest
+
+
+## R and Python setups
+
+```{r}
+# /*===== R =====*/
+library(here)
+source(here("GitControlled/Codes/0_1_ls_packages.R"))
+source(here("GitControlled/Codes/0_0_functions.R"))
+
+# === Python === #
+# --- Python module --- #
+source_python(here("GitControlled/Codes/MCsimulation/import_modules.py"))
+
+# --- CF-DML --- #
+source_python(here("GitControlled/Codes/MCsimulation/fn_CF_DML.py"))
+# --- DR-ORF --- #
+source_python(here("GitControlled/Codes/MCsimulation/fn_DR_OF.py"))
+# --- DML-ORF --- #
+source_python(here("GitControlled/Codes/MCsimulation/fn_DML_OF.py"))
+```
+
+
+## DGP: Example Usage with Single Binary Treatment Synthetic Data and Confidence Intervals
+
++ T: Treatment index
++ W: controls/confounders
++ X: heterogeneity driver 
+
+
+
+```{r}
+exp_te <- function(x){
+  exp(2 * x[1])# DGP constants
+}
+    
+
+set.seed(123)
+
+# /*===========================================*/
+#'=  Training Data =
+# /*===========================================*/
+# Number of observation
+n = 1000
+# Number of variables in W (including irrelevant variables)
+n_w = 
+# Number of variables in X
+n_x = 3
+# number of variables consisting of nuisance functions f() and g()
+support_size = 2
+
+# === Outcome support === #
+# variables composing of nuisance paprameter g()
+support_Y <- sample(seq_len(n_w), size=support_size, replace=FALSE)
+coefs_Y = runif(support_size)
+epsilon_sample = function(n) runif(n, min = -1, max = 1)
+
+# === Treatment support === #
+# variables composing of propensity score: f()
+support_T <- support_Y 
+coefs_T <- runif(support_size)
+eta_sample <- function(n) runif(n, min = -1, max = 1) 
+
+# Generate controls, covariates, treatments and outcomes
+W = matrix(rnorm(n*n_w), nrow=n)
+X = matrix(runif(n*n_x), nrow=n)
+
+# Heterogeneous treatment effects (only x1 contributes)
+TE = lapply(seq_len(nrow(X)), function(x) exp_te(X[x,])) %>% do.call(c, .)
+
+# Define treatment assignment
+log_odds = W[, support_T] %*% coefs_T + eta_sample(n)
+T_sigmoid = 1/(1 + exp(-log_odds))
+
+T = lapply(T_sigmoid, function(x) rbinom(1, 1, prob=x)) %>%
+  do.call(c,.)
+
+# Define the outcome
+Y = (TE * T + W[, support_Y] %*% coefs_Y + epsilon_sample(n)) %>%
+  array()
+
+# Get testing data
+# X_test = matrix(runif(n*n_x), nrow=n)
+# X_test[, 1] = seq(from = 0, to = 1, length.out = n)
+
+X_test =  X %>%
+  as_tibble(.) %>% 
+  summarize_all(mean) %>%
+  data.table() %>%
+  .[rep(1,1000),] %>%
+  as.matrix() %>%
+  unname()
+
+X_test[, 1] = seq(from = 0, to = 1, length.out = 1000)
+
+
+```
+
+
+## Compare: CausalForestDML, DMLOrthoForest, DROrthoForest
+
+### Train estimator
+```{r}
+
+#/*--------------------------------*/
+#' ## CF-DML
+#/*--------------------------------*/
+
+res_cfDML <- 
+   run_CF_DML(
+    Y = Y,
+    T = T,
+    X = X,
+    W = W,
+    X_test = X_test
+)
+
+res_X_test_cf <- 
+  data.table(
+    x1 = X_test[, 1],
+    true_te = (lapply(seq_len(nrow(X_test)), function(x) exp_te(X_test[x,])))%>% do.call(c,.),
+    pred_te = res_cfDML[[1]] %>% c(),
+    te_lower = res_cfDML[[2]] %>% c(),
+    te_upper = res_cfDML[[3]] %>% c()
+  )
+
+ggplot(res_X_test_cf) +
+  geom_line(aes(x=x1, y=true_te), linetype = "dashed", color = "blue", size=1) +
+  geom_line(aes(x=x1, y=pred_te)) +
+    geom_ribbon(aes(x=x1, ymin=te_lower, ymax=te_upper,), alpha=0.4) +
+    labs("CF-DML")
+
+#/*--------------------------------*/
+#' ## DR-ORF
+#/*--------------------------------*/
+
+res_DR_ORF <- 
+  run_DR_ORF(
+    Y = Y,
+    T = T,
+    X = X,
+    W = W,
+    X_test = X_test
+)
+
+res_X_test_drof <- 
+  data.table(
+    x1 = X_test[, 1],
+    true_te = (lapply(seq_len(nrow(X_test)), function(x) exp_te(X_test[x,])))%>% do.call(c,.),
+    pred_te = res_DR_ORF[[1]] %>% c(),
+    te_lower = res_DR_ORF[[2]] %>% c(),
+    te_upper = res_DR_ORF[[3]] %>% c()
+  )
+
+ggplot(res_X_test_drof) +
+  geom_line(aes(x=x1, y=true_te), linetype = "dashed", color = "blue", size=1) +
+  geom_line(aes(x=x1, y=pred_te)) +
+  # geom_smooth(aes(x=x1, y=pred_te), se = FALSE) +
+  geom_ribbon(aes(x=x1, ymin=te_lower, ymax=te_upper,), alpha=0.4) +
+  labs("DR-ORF")
+
+
+#/*--------------------------------*/
+#' ## DML-ORF
+#/*--------------------------------*/
+
+res_DML_ORF <- 
+  run_DML_ORF(
+    Y = Y,
+    T = T,
+    X = X,
+    W = W,
+    X_test = X_test
+)
+
+res_X_test_dmlof <- 
+  data.table(
+    x1 = X_test[, 1],
+    true_te = (lapply(seq_len(nrow(X_test)), function(x) exp_te(X_test[x,])))%>% do.call(c,.),
+    pred_te = res_DML_ORF[[1]] %>% c(),
+    te_lower = res_DML_ORF[[2]] %>% c(),
+    te_upper = res_DML_ORF[[3]] %>% c()
+  )
+
+ggplot(res_X_test_dmlof) +
+  geom_line(aes(x=x1, y=true_te), linetype = "dashed", color = "blue", size=1) +
+  geom_line(aes(x=x1, y=pred_te)) +
+  # geom_smooth(aes(x=x1, y=pred_te), se = FALSE) +
+  geom_ribbon(aes(x=x1, ymin=te_lower, ymax=te_upper,), alpha=0.4)+
+  labs("DML-ORF")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+Note: For `DMLOrthoForest` with discrete treatment, model_T is treated as a classifier that must have a `predict_proba` method. 
+
++ I tried, 
+  * 1.`model_Y=RandomForestRegressor(), model_T=RandomForestClassifier(min_samples_leaf=10)`
+    - severely biased (underestimated)
+  * 2. `model_Y=GradientBoostingRegressor(), model_T=GradientBoostingClassifier(min_samples_leaf=10),`
+    - the predicted treatment effects looks like linear
+  * 3. Default setting, `model_Y = LassoCV(cv=3), model_T = LassoCV(cv=3)`
+    - the predicted treatment effects almost tracks the true ones, but the at the end of the x value, the model severely underestimated treatment effects.
+  * 3. `discrete_treatment=False` and Default setting, `model_Y = LassoCV(cv=3), model_T = LassoCV(cv=3)`
+    - + If T=0 or 1, whether specifying `discrete_treatment=True` or not does not matter, the results look almost the same
+    - CI becomes narrower when specifying `discrete_treatment=True`. 
+  * 4. `discrete_treatment=False` and Default setting, `model_T=Lasso(alpha=0.33), model_Y=Lasso(alpha=0.33), model_T_final=WeightedLasso(alpha=0.33), model_Y_final=WeightedLasso(alpha=0.33),`
+    - the result is not different from `discrete_treatment=False` and Default setting
+  * 5. `discrete_treatment=True` and `max_depth=30` and Default setting about other model settings. 
+    - the prediction accuracy problem around the end of x values becomes improved. 
+  * 6. `discrete_treatment=True` and `max_depth=30` and `model_Y=GradientBoostingRegressor(), model_T=GradientBoostingClassifier(min_samples_leaf=10),`
+    - the predicted treatment effects is linear
+
++ Conclusion: use  `discrete_treatment=True` and `max_depth=30 (or higher)`  and Default setting about other model settings.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

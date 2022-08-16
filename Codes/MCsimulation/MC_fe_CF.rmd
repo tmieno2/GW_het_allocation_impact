@@ -1,0 +1,673 @@
+---
+title: ""
+author: "Shunkei Kakimoto"
+output:
+  html_document:
+    number_sections: yes
+    theme: flatly
+    toc_float: yes
+    toc: yes
+    toc_depth: 3
+geometry: margin=1in
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(here)
+
+here::i_am("")
+
+# opts_knit$set(root.dir = "")
+# opts_knit$set(root.dir = here())
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  cache = FALSE,
+  comment = NA,
+  message = FALSE,
+  warning = FALSE,
+  tidy = FALSE,
+  cache.lazy = FALSE,
+  #--- figure ---#
+  dpi = 400,
+  fig.width = 7.5,
+  fig.height = 5,
+  out.width = "750px",
+  out.height = "500px"
+)
+
+# /*===== Basic Packages  =====*/
+# /*---- Data Wrangling ----*/
+library(data.table)
+library(tidyverse)
+library(DescTools)
+library(maps)
+
+# /*---- Visualization ----*/
+library(RColorBrewer)
+library(patchwork)
+library(ggplot2)
+library(ggthemes)
+library(ggpubr)
+library(viridis)
+library(grid)
+library(gridExtra)
+library(GGally)
+
+# /*---- Model Summary ----*/
+library(stats)
+library(modelsummary)
+library(flextable)
+library(officer)
+library(officedown)
+library(gt)
+
+```
+
++ The example is almost same as the one used in a EconML notebook: [Double Machine Learning Examples.ipynb](https://github.com/microsoft/EconML/blob/main/notebooks/Double%20Machine%20Learning%20Examples.ipynb).
+
+$$Y = \theta(X)*T + g(X, W) + \alpha_i + \alpha_t + \epsilon$$
+, where $\theta(X) = exp(X)$, and $T ~ B(n, p)$ where $p=1/1+exp{-(\beta_0 + \beta_1 w_1 + \beta_2 w_2)}$, $g(X, W)$ is a linear function. $\alpha_i$ + $\alpha_t$ are individual fixed effect and year fixed effect. 
+
++ DGP1: 
+	* x1 is heterogeneous driver, 
+	* x1 and w1 are the components of T 
+	* x2, x3, and w2 are the components of g()
+	* w3 is irrelevant 
+	* $\alpha_i$ and $\alpha_t$ are somewhat correlated with $x1$ independently 
+	
+
+	* too much restriction on variable selection is harmful
+	* Using dummy variable in the first state (predicting marginal impact on X on Y, and prediction of propensity score) is almost 
+
+
+## Data generating process 1
+
+```{r}
+N <- 200 #* number of individuals
+T <- 30 #* number of time perids
+data <-
+  CJ(
+    id = 1:N,
+    t = 1:T
+  ) %>%
+  .[, e_a_i := rnorm(1), by = id] %>%
+  .[, e_b_t := rnorm(1), by = t] %>%
+  # indiv FE
+  .[, a_i := 0.7*runif(1) + 0.3*e_a_i, by = id] %>%
+  # year FE
+  .[, b_t := 0.7*runif(1) + 0.3*e_b_t, by = t] %>%
+  # heterogeneity driver: x1
+  .[, x1 := 0.3*rnorm(.N) + 0.4*e_a_i +  0.4*e_b_t] %>%
+  # Treatment effect
+  .[, TE := exp(3 * x1)] %>%
+  # Other variables in nuisance functions
+  .[, x2 := rnorm(.N)] %>%
+  .[, x3 := rnorm(.N)] %>%
+  .[, w1 := rnorm(.N)] %>%
+  .[, w2 := rnorm(.N)] %>%
+  .[, w3 := rnorm(.N)] %>%
+  # Treatment assignment with propensity score
+  # .[, eta := runif(.N, min = -1, max = 1)] %>%
+  # .[, log_odds := 0.4*x1 + 0.5*w1 + eta] %>%
+  # .[, propensity := 1/(1 + exp(-log_odds))] %>%
+  # .[, T := rbinom(.N, 1, prob=propensity)] %>%
+    .[, T := rbinom(1, 1, prob=0.5), by= id] %>%
+  # Outcome
+  .[, epsilon := rnorm(.N)] %>%
+  .[, Y := TE*T + 2*x2 + 3*x3 + 4*w2 + 4*w2^2 + epsilon + 5*a_i + b_t + epsilon]
+
+cov_ls <- c(
+	"x1", "x2", "x3",
+	 "w1", "w2", "w3")
+
+dummies <-
+  fastDummies::dummy_cols(data, select_columns = c("id")) %>%
+  .[, paste0("id_", unique(.$id)), with=FALSE] %>%
+  as.matrix() %>%
+  .[, -1]
+
+data[,.(x1, a_i, b_t)] %>%
+	cor()
+
+# /*===== Training Dataset  =====*/
+# --- dependent variable --- #
+Y <- data[, Y]
+# --- treatment indicator --- #
+T <- data[, T]
+# --- features --- #
+X <- data[, ..cov_ls]
+X_full <- X %>% as.matrix() %>% cbind(., dummies)
+```
+
+# CF
+
+```{r}
+#/*--------------------------------*/
+#' ## 1st CF
+#/*--------------------------------*/
+set.seed(23456)
+forest_W <- regression_forest(X, T, num.trees = 4000)
+W_hat <- predict(forest_W)$predictions
+
+forest_Y <- regression_forest(X, Y, num.trees = 4000)
+Y_hat <- predict(forest_Y)$predictions
+
+cf_raw <- causal_forest(
+  X=X,
+  Y=Y,
+  W=T, 
+  # Y.hat = Y_hat, 
+  # W.hat = W_hat,
+  tune.parameters = "all",
+  num.trees = 4000
+)
+
+varimp = variable_importance(cf_raw)
+# selected_vars = which(varimp > mean (varimp))
+which(varimp / mean(varimp) > 0.2)
+se_cov <- data[,cov_ls[selected_vars], with=FALSE]
+
+
+X_test <- 
+	gen_pred_data(data, 
+		cov_ls = names(X), target_var = "x1") %>%
+	.[, !"target_var"]
+
+res_cf_raw <- 
+  data.table(
+    x1 = X_test[, x1],
+    true_te = exp(3 * X_test[, x1]),
+    pred_te = predict(cf_raw, newdata=X_test)$predictions
+    ) %>%
+   .[,`:=`(
+   		te_lower = pred_te - 1.96,
+        te_upper = pred_te + 1.96
+    )]
+
+vis1 <- 
+	ggplot(res_cf_raw) +
+  	geom_line(aes(x=x1, y=true_te), linetype = "dashed", color = "blue", size=1) +
+  	geom_line(aes(x=x1, y=pred_te)) +
+    geom_ribbon(aes(x=x1, ymin=te_lower, ymax=te_upper,), alpha=0.4)
+
+vis1
+
+#/*--------------------------------*/
+#' ## 2nd CF
+#/*--------------------------------*/
+# set.seed(23456)
+# forest_W <- regression_forest(se_cov, T, num.trees = 4000)
+# W_hat <- predict(forest_W)$predictions
+
+# forest_Y <- regression_forest(se_cov, Y, num.trees = 4000)
+# Y_hat <- predict(forest_Y)$predictions
+
+cf_res <- causal_forest(
+  X=se_cov,
+  Y=Y,
+  W=T, 
+  Y.hat = Y_hat, 
+  W.hat = W_hat,
+  num.trees = 4000,
+  tune.parameters = "all",
+  # tune.parameters = c(""),
+)
+
+X_test <- 
+	gen_pred_data(data, 
+		cov_ls = names(se_cov), target_var = "x1") %>%
+	.[, !"target_var"]
+
+res_cf_final <- 
+  data.table(
+    x1 = X_test[, x1],
+    true_te = exp(2 * X_test[, x1]),
+    pred_te = predict(cf_res, newdata=X_test)$predictions
+    ) %>%
+   .[,`:=`(
+   		te_lower = pred_te - 1.96,
+        te_upper = pred_te + 1.96
+    )]
+
+vis2 <- 
+	ggplot(res_cf_final) +
+  	geom_line(aes(x=x1, y=true_te), linetype = "dashed", color = "blue", size=1) +
+  	geom_line(aes(x=x1, y=pred_te)) +
+    geom_ribbon(aes(x=x1, ymin=te_lower, ymax=te_upper,), alpha=0.4)
+vis2
+```
+
+
+# CF with dummy
+
+```{r}
+#/*--------------------------------*/
+#' ## 1st CF
+#/*--------------------------------*/
+set.seed(23456)
+forest_W <- regression_forest(X_full, T, num.trees = 4000)
+W_hat <- predict(forest_W)$predictions
+
+forest_Y <- regression_forest(X_full, Y, num.trees = 4000)
+Y_hat <- predict(forest_Y)$predictions
+
+cf_raw <- causal_forest(
+  X=X,
+  Y=Y,
+  W=T, 
+  Y.hat = Y_hat, 
+  W.hat = W_hat,
+  tune.parameters = "all",
+  num.trees = 4000
+)
+
+varimp = variable_importance(cf_raw)
+# selected_vars = which(varimp > mean (varimp))
+selected_vars = which(varimp / mean(varimp) > 0.2)
+se_cov <- data[,cov_ls[selected_vars], with=FALSE]
+
+X_test <- 
+	gen_pred_data(data, 
+		cov_ls = names(X), target_var = "x1") %>%
+	.[, !"target_var"]
+
+res_cf_raw <- 
+  data.table(
+    x1 = X_test[, x1],
+    true_te = exp(2 * X_test[, x1]),
+    pred_te = predict(cf_raw, newdata=X_test)$predictions
+    ) %>%
+   .[,`:=`(
+   		te_lower = pred_te - 1.96,
+        te_upper = pred_te + 1.96
+    )]
+
+vis3 <- 
+	ggplot(res_cf_raw) +
+  	geom_line(aes(x=x1, y=true_te), linetype = "dashed", color = "blue", size=1) +
+  	geom_line(aes(x=x1, y=pred_te)) +
+    geom_ribbon(aes(x=x1, ymin=te_lower, ymax=te_upper,), alpha=0.4)
+
+vis3
+
+#/*--------------------------------*/
+#' ## 2nd CF
+#/*--------------------------------*/
+cf_res <- causal_forest(
+  X=se_cov,
+  Y=Y,
+  W=T, 
+  Y.hat = Y_hat, 
+  W.hat = W_hat,
+  num.trees = 4000,
+  tune.parameters = "all",
+  # tune.parameters = c(""),
+)
+
+X_test <- 
+	gen_pred_data(data, 
+		cov_ls = names(se_cov), target_var = "x1") %>%
+	.[, !"target_var"]
+
+res_cf_final <- 
+  data.table(
+    x1 = X_test[, x1],
+    true_te = exp(2 * X_test[, x1]),
+    pred_te = predict(cf_res, newdata=X_test)$predictions
+    ) %>%
+   .[,`:=`(
+   		te_lower = pred_te - 1.96,
+        te_upper = pred_te + 1.96
+    )]
+
+vis4 <- 
+	ggplot(res_cf_final) +
+  	geom_line(aes(x=x1, y=true_te), linetype = "dashed", color = "blue", size=1) +
+  	geom_line(aes(x=x1, y=pred_te)) +
+    geom_ribbon(aes(x=x1, ymin=te_lower, ymax=te_upper,), alpha=0.4)
+vis4
+```
+
+
+```{r}
+fe_data <-
+  feols(Y ~ 1 | id + t, data = data) %>%
+  fixef() %>%
+  .$id %>%
+  data.frame(
+    id = names(.) %>% as.numeric(),
+    fe = .
+  ) %>%
+  data.table()
+
+data_fe <- fe_data[data, on = "id"]
+cov_fe_ls <- c(cov_ls, "fe")
+X_fe <- data_fe[, ..cov_fe_ls]
+
+#/*--------------------------------*/
+#' ## 1st CF
+#/*--------------------------------*/
+set.seed(23456)
+forest_W <- regression_forest(X_fe, T, num.trees = 4000)
+W_hat <- predict(forest_W)$predictions
+
+forest_Y <- regression_forest(X_fe, Y, num.trees = 4000)
+Y_hat <- predict(forest_Y)$predictions
+
+cf_raw <- causal_forest(
+  X=X_fe,
+  Y=Y,
+  W=T, 
+  Y.hat = Y_hat, 
+  W.hat = W_hat,
+  tune.parameters = "all",
+  num.trees = 4000
+)
+
+varimp = variable_importance(cf_raw)
+# selected_vars = which(varimp > mean (varimp))
+selected_vars = which(varimp / mean(varimp) > 0.2)
+se_cov <- data_fe[,cov_fe_ls[selected_vars], with=FALSE]
+
+X_test_fe <- 
+	gen_pred_data(data_fe, 
+		cov_ls = names(X_fe), target_var = "x1") %>%
+	.[, !"target_var"]
+
+res_cf_raw <- 
+  data.table(
+    x1 = X_test_fe[, x1],
+    true_te = exp(2 * X_test_fe[, x1]),
+    pred_te = predict(cf_raw, newdata=X_test_fe)$predictions
+    ) %>%
+   .[,`:=`(
+   		te_lower = pred_te - 1.96,
+        te_upper = pred_te + 1.96
+    )]
+
+vis5 <- 
+	ggplot(res_cf_raw) +
+  	geom_line(aes(x=x1, y=true_te), linetype = "dashed", color = "blue", size=1) +
+  	geom_line(aes(x=x1, y=pred_te)) +
+    geom_ribbon(aes(x=x1, ymin=te_lower, ymax=te_upper,), alpha=0.4)
+
+vis5
+
+#/*--------------------------------*/
+#' ## 2nd CF
+#/*--------------------------------*/
+cf_res <- causal_forest(
+  X=se_cov,
+  Y=Y,
+  W=T, 
+  Y.hat = Y_hat, 
+  W.hat = W_hat,
+  num.trees = 4000,
+  tune.parameters = "all",
+  # tune.parameters = c(""),
+)
+
+X_test <- 
+	gen_pred_data(data, 
+		cov_ls = names(se_cov), target_var = "x1") %>%
+	.[, !"target_var"]
+
+res_cf_final <- 
+  data.table(
+    x1 = X_test[, x1],
+    true_te = exp(2 * X_test[, x1]),
+    pred_te = predict(cf_res, newdata=X_test)$predictions
+    ) %>%
+   .[,`:=`(
+   		te_lower = pred_te - 1.96,
+        te_upper = pred_te + 1.96
+    )]
+
+vis4 <- 
+	ggplot(res_cf_final) +
+  	geom_line(aes(x=x1, y=true_te), linetype = "dashed", color = "blue", size=1) +
+  	geom_line(aes(x=x1, y=pred_te)) +
+    geom_ribbon(aes(x=x1, ymin=te_lower, ymax=te_upper,), alpha=0.4)
+vis4
+
+
+```
+
+
+## Data generating process 2
++ Heterogeneous driver is correlated with other variables
+
+## Data generating process 1
+
+```{r}
+N <- 200 #* number of individuals
+T <- 30 #* number of time perids
+data <-
+  CJ(
+    id = 1:N,
+    t = 1:T
+  ) %>%
+  # .[, e_a_i := rnorm(1), by = id] %>%
+  # .[, e_b_t := rnorm(1), by = t] %>%
+  # indiv FE
+  .[, a_i := runif(1), by = id] %>%
+  # year FE
+  .[, b_t := runif(1), by = t] %>%
+  # heterogeneity driver: x1
+  .[,unobs_x1 := rnorm(.N)] %>%
+  .[, x1 := rnorm(.N)] %>%
+  # Treatment effect
+  .[, e_TE := rnorm(.N)] %>%
+  .[, TE := exp(3 * unobs_x1 *x1) + e_TE] %>%
+  # Other variables in nuisance functions
+  .[, x2 := rnorm(.N)] %>%
+  .[, x3 := rnorm(.N)] %>%
+  .[, w1 := rnorm(.N)] %>%
+  .[, w2 := rnorm(.N)] %>%
+  .[, w3 := rnorm(.N)] %>%
+  # Treatment assignment with propensity score
+  # .[, eta := runif(.N, min = -1, max = 1)] %>%
+  # .[, log_odds := 0.4*x1 + 0.5*w1 + eta] %>%
+  # .[, propensity := 1/(1 + exp(-log_odds))] %>%
+  # .[, T := rbinom(.N, 1, prob=propensity)] %>%
+    .[, T := rbinom(1, 1, prob=0.5), by= id] %>%
+  # Outcome
+  .[, epsilon := rnorm(.N)] %>%
+  .[, Y := TE*T + 2*x2 + 3*x3 + 4*w2 + 4*w2^2 + 2*unobs_x1 + epsilon + 3*a_i + b_t + epsilon]
+
+cov_ls <- c(
+	"x1", "x2", "x3",
+	 "w1", "w2", "w3")
+
+dummies <-
+  fastDummies::dummy_cols(data, select_columns = c("id")) %>%
+  .[, paste0("id_", unique(.$id)), with=FALSE] %>%
+  as.matrix() %>%
+  .[, -1]
+
+# /*===== Training Dataset  =====*/
+# --- dependent variable --- #
+Y <- data[, Y]
+# --- treatment indicator --- #
+T <- data[, T]
+# --- features --- #
+X <- data[, ..cov_ls]
+X_full <- X %>% as.matrix() %>% cbind(., dummies)
+```
+
+
+```{r}
+#/*--------------------------------*/
+#' ## 1st CF
+#/*--------------------------------*/
+set.seed(23456)
+forest_W <- regression_forest(X, T, num.trees = 4000)
+W_hat <- predict(forest_W)$predictions
+
+forest_Y <- regression_forest(X, Y, num.trees = 4000)
+Y_hat <- predict(forest_Y)$predictions
+
+cf_raw <- causal_forest(
+  X=X,
+  Y=Y,
+  W=T, 
+  # Y.hat = Y_hat, 
+  # W.hat = W_hat,
+  tune.parameters = "all",
+  num.trees = 4000
+)
+
+varimp = variable_importance(cf_raw)
+# selected_vars = which(varimp > mean (varimp))
+which(varimp / mean(varimp) > 0.2)
+se_cov <- data[,cov_ls[selected_vars], with=FALSE]
+
+
+X_test <- 
+	gen_pred_data(data, 
+		cov_ls = names(X), target_var = "x1") %>%
+	.[, !"target_var"]
+
+res_cf_raw <- 
+  data.table(
+    x1 = X_test[, x1],
+    true_te = exp(3 * X_test[, x1]),
+    pred_te = predict(cf_raw, newdata=X_test)$predictions
+    ) %>%
+   .[,`:=`(
+   		te_lower = pred_te - 1.96,
+        te_upper = pred_te + 1.96
+    )]
+
+vis1 <- 
+	ggplot(res_cf_raw) +
+  	geom_line(aes(x=x1, y=true_te), linetype = "dashed", color = "blue", size=1) +
+  	geom_line(aes(x=x1, y=pred_te)) +
+    geom_ribbon(aes(x=x1, ymin=te_lower, ymax=te_upper,), alpha=0.4)
+
+vis1
+
+#/*--------------------------------*/
+#' ## 2nd CF
+#/*--------------------------------*/
+# set.seed(23456)
+# forest_W <- regression_forest(se_cov, T, num.trees = 4000)
+# W_hat <- predict(forest_W)$predictions
+
+# forest_Y <- regression_forest(se_cov, Y, num.trees = 4000)
+# Y_hat <- predict(forest_Y)$predictions
+
+cf_res <- causal_forest(
+  X=se_cov,
+  Y=Y,
+  W=T, 
+  Y.hat = Y_hat, 
+  W.hat = W_hat,
+  num.trees = 4000,
+  tune.parameters = "all",
+  # tune.parameters = c(""),
+)
+
+X_test <- 
+	gen_pred_data(data, 
+		cov_ls = names(se_cov), target_var = "x1") %>%
+	.[, !"target_var"]
+
+res_cf_final <- 
+  data.table(
+    x1 = X_test[, x1],
+    true_te = exp(2 * X_test[, x1]),
+    pred_te = predict(cf_res, newdata=X_test)$predictions
+    ) %>%
+   .[,`:=`(
+   		te_lower = pred_te - 1.96,
+        te_upper = pred_te + 1.96
+    )]
+
+vis2 <- 
+	ggplot(res_cf_final) +
+  	geom_line(aes(x=x1, y=true_te), linetype = "dashed", color = "blue", size=1) +
+  	geom_line(aes(x=x1, y=pred_te)) +
+    geom_ribbon(aes(x=x1, ymin=te_lower, ymax=te_upper,), alpha=0.4)
+vis2
+```
+
+
+
+
+
+
+
+
+
+
+
+
+---
+
+```{r}
+# N <- 200 #* number of individuals
+# T <- 30 #* number of time perids
+
+# data <-
+#   CJ(
+#     id = 1:N,
+#     t = 1:T
+#   ) %>%
+#   # indiv FE
+#   .[, a_i := runif(1), by = id] %>%
+#   # year FE
+#   .[, phi_t := runif(1), by = t] %>%
+#   # heterogeneity driver: x1
+#   .[, theta := rnorm(.N)] %>%
+#   .[, x1 := 0.4*rnorm(.N) + 0.6*theta] %>%
+#   # Treatment effect
+#   .[, TE := exp(2 * x1)] %>%
+#   # Other variables in nuisance functions
+#   .[, x2 := 0.4*rnorm(.N) + 0.6*theta] %>%
+#   .[, x3 := rnorm(.N)] %>%
+#   .[, w1 := rnorm(.N)] %>%
+#   .[, w2 := rnorm(.N)] %>%
+#   .[, w3 := rnorm(.N)] %>%
+#   # Treatment assignment with propensity score
+#   .[, eta := runif(.N, min = -1, max = 1)] %>%
+#   .[, log_odds := 0.4*w1 + 0.5*w2 + eta] %>%
+#   .[, propensity := 1/(1 + exp(-log_odds))] %>%
+#   .[, T := rbinom(.N, 1, prob=propensity)] %>%
+#   # Outcome
+#   .[, epsilon := rnorm(.N)] %>%
+#   .[, Y := TE*T + 0.5*w1 + 0.3*w2 + epsilon + 5*a_i + phi_t + epsilon]
+
+# cov_ls <- c(
+# 	"x1", "x2", "x3",
+# 	 "w1", "w2", "w3")
+
+# dummies <-
+#   fastDummies::dummy_cols(data, select_columns = "id") %>%
+#   .[, paste0("id_", unique(.$id)), with=FALSE] %>%
+#   as.matrix() %>%
+#   .[, -1]
+
+# # /*===== Training Dataset  =====*/
+# # --- dependent variable --- #
+# Y <- data[, Y]
+# # --- treatment indicator --- #
+# T <- data[, T]
+# # --- features --- #
+# X <- data[, ..cov_ls]
+# X_full <- X %>% as.matrix() %>% cbind(., dummies)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

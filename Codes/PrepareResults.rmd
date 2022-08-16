@@ -1,0 +1,59 @@
+# Set up
+
+```{r packages, cache = FALSE, include = FALSE}
+# === packages ===#
+# --- data wrangling--- #
+library(sf)
+library(data.table)
+library(tidyverse)
+
+# --- figure making --- #
+# library(extrafont)
+library(ggbrace)
+library(RColorBrewer)
+library(patchwork)
+library(ggplot2)
+library(ggthemes)
+library(viridis)
+library(ggpubr)
+library(gridExtra)
+library(DiagrammeR)
+
+# --- table making --- #
+library(flextable)
+library(ftExtra)
+library(officer)
+library(officedown)
+library(modelsummary)
+```
+
+# figure and table set up
+
+```{r}
+theme_figure <-
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    rect = element_blank(),
+    text = element_text(family = "Times New Roman")
+  )
+
+theme_dist <-
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    strip.text.x = element_text(size = 12, face = "bold"),
+    strip.text.y = element_text(size = 12, face = "bold"),
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 12, face = "bold"),
+    legend.position = "bottom",
+    text = element_text(family = "Times New Roman")
+  )
+
+set_flextable_defaults(
+  font.family = "Times New Roman"
+)
+```

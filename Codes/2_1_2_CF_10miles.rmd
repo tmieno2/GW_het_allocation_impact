@@ -1,0 +1,255 @@
+---
+title: "CF analysis"
+author: "Shunkei Kakimoto"
+output:
+  html_document:
+    number_sections: yes
+    theme: flatly
+    toc_float: yes
+    toc: yes
+    toc_depth: 3
+geometry: margin=1in
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(here)
+
+here::i_am("GitControlled/Codes/2_1_2_CF_10miles.rmd")
+
+# opts_knit$set(root.dir = "")
+# opts_knit$set(root.dir = here())
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  cache = FALSE,
+  comment = NA,
+  message = FALSE,
+  warning = FALSE,
+  tidy = FALSE,
+  cache.lazy = FALSE,
+  #--- figure ---#
+  dpi = 400,
+  fig.width = 7.5,
+  fig.height = 5,
+  out.width = "750px",
+  out.height = "500px"
+)
+
+# /*===== Basic Packages  =====*/
+# /*---- Data Wrangling ----*/
+library(data.table)
+library(tidyverse)
+library(DescTools)
+library(maps)
+
+# /*---- Visualization ----*/
+library(RColorBrewer)
+library(patchwork)
+library(ggplot2)
+library(ggthemes)
+library(ggpubr)
+library(viridis)
+library(grid)
+library(gridExtra)
+library(GGally)
+
+# /*---- Model Summary ----*/
+library(stats)
+library(modelsummary)
+library(flextable)
+library(officer)
+library(officedown)
+library(gt)
+
+```
+
+```{r, echo=F}
+map_theme <-
+  theme(
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank()
+  )
+```
+
+```{r, echo=F}
+# === setup === #
+library(here)
+source(here("GitControlled/Codes/0_1_ls_packages.R"))
+source(here("GitControlled/Codes/0_0_functions.R"))
+```
+
+# Objectives
++ Using well data in the 10 miles buffer, do CF analysis with:
+  * Panel data
+    - For LR data, owner-level
+    - For TB data, well-level
+  * Cross-sectional data 
+    - For LR data, owner-level
+    - For TB data, well-level
+
+# Panel data
+
+## Data in the 10 miles buffer
+
+```{r}
+reg_data_10mi_raw <- 
+	here("Shared/Data/WaterAnalysis/reg_data_10mi_raw.rds") %>%
+	readRDS()
+
+# - Data on TB - #
+TB_10mi <- reg_data_10mi_raw[nrdname=="Tri-Basin",]
+# - Data on LR - #
+LR_10mi <- reg_data_10mi_raw[nrdname=="Lower Republican",]
+```
+
+### LR Data
+
++ The data is aggregated by `nrd_owner_name` and `year`. 
++ In aggregating the data, the variable should be taken by mean weighted by `acres`.
+
+```{r}
+LR_10mi_y_owner <-
+  LR_10mi %>%
+  .[,.(
+    usage = weighted.mean(usage, acres/sum(acres)),
+    treat2 = mean(treat2),
+    total_acres = sum(acres),
+    # --- soil --- #
+    silttotal_r = weighted.mean(silttotal_r, acres/sum(acres)),
+    claytotal_r = weighted.mean(claytotal_r, acres/sum(acres)),
+    slope_r = weighted.mean(slope_r, acres/sum(acres)),
+    ksat_r = weighted.mean(ksat_r, acres/sum(acres)),
+    awc_r = weighted.mean(awc_r, acres/sum(acres)),
+    # --- weather --- #    
+    pr_in = weighted.mean(pr_in, acres/sum(acres)),
+    pet_in = weighted.mean(pet_in, acres/sum(acres)),
+    gdd_in = weighted.mean(gdd_in, acres/sum(acres)),
+    # --- tr --- #
+    cntyname_fix = unique(cntyname_fix)
+  ), by = .(nrd_owner_name, year)] %>%
+  .[,county_year := paste0(cntyname_fix, "_", year)]
+
+```
+
+### TB Data
+
++ For TB data, keep using yearly well-level data.
+
+```{r}
+se_vars <- names(LR_10mi_y_owner) %>% .[.!="acres"]
+
+TB_10mi_y_well <-
+  TB_10mi %>%
+  .[,county_year := paste0(cntyname, "_", year)] %>%
+  .[, ..se_vars]
+```
+
+### Regression Data
+
++ Merge LR data and TB data.
+
+```{r}
+reg_data_10mi <- bind_rows(LR_10mi_y_owner, TB_10mi_y_well)
+```
+
+
+## CF Analysis
+
+```{r, echo=F}
+# /*===== control variables =====*/
+# remove gdd_in
+cov_ls <- c(
+  # --- weather --- #
+  "pr_in","pet_in",
+  # --- soil --- #
+  "silttotal_r", "claytotal_r", "slope_r", "ksat_r", "awc_r"
+  )
+
+data <- reg_data_10mi
+Y <- data[, usage]
+T <- data[, treat2]
+X <- data[, ..cov_ls]
+cl_var <- data[, county_year] %>% factor()
+```
+
+### 1st CF
+
+```{r, echo=F}
+#/*--------------------------------*/
+#' ## 1st CF
+#/*--------------------------------*/
+set.seed(23456)
+
+forest_W_cl <- regression_forest(
+  X, T, 
+  clusters = cl_var,
+  num.trees = 4000)
+W_hat <- predict(forest_W_cl)$predictions
+
+forest_Y_cl <- regression_forest(
+  X, Y, 
+  clusters = cl_var,
+  num.trees = 4000)
+Y_hat <- predict(forest_Y_cl)$predictions
+
+cf_raw_cl <- causal_forest(
+  X=X,
+  Y=Y,
+  W=T, 
+  Y.hat = Y_hat, 
+  W.hat = W_hat,
+  clusters = cl_var,
+  tune.parameters = "all",
+  num.trees = 4000
+)
+
+varimp = variable_importance(cf_raw_cl)
+selected_vars = which(varimp > mean (varimp))
+# selected_vars = which(varimp/mean(varimp) > 0.2)
+se_cov <- data[,cov_ls[selected_vars], with=FALSE]
+
+vis_cf_raw_cl <- gen_impact_viz(
+  cf_res= cf_raw_cl,
+  data_base=data,
+  treat_var='treat2',
+  var_ls= cov_ls,
+  var_ls_int = cov_ls
+)
+vis_cf_raw_cl
+```
+
+### 2nd CF
+
+```{r, echo=F}
+#/*--------------------------------*/
+#' ## 2nd CF
+#/*--------------------------------*/
+cf_res_cl <- causal_forest(
+  X=se_cov,
+  Y=Y,
+  W=T, 
+  Y.hat = Y_hat, 
+  W.hat = W_hat,
+  clusters = cl_var,
+  # sample.fraction = 0.4,
+  num.trees = 4000,
+  tune.parameters = "all",
+  # tune.parameters = c(""),
+)
+
+#/*--------------------------------*/
+#' ## Visualization
+#/*--------------------------------*/
+vis_cf_res_cl <-
+  gen_impact_viz(
+  cf_res= cf_res_cl,
+  data_base=data,
+  treat_var='treat2',
+  var_ls= cov_ls[selected_vars],
+  var_ls_int = cov_ls[selected_vars]
+)
+vis_cf_res_cl
+```
+

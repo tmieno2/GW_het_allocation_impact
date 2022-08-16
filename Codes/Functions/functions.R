@@ -6,65 +6,243 @@
 
 
 
-# CF_run <- function(data,rates,var_ls,cl_id=NA){
-#   #=== treatment assignment ===#
-#   data_temp_dt <- data[treat_var %in% rates,] %>%
-#     .[,trt:=ifelse(treat_var==rates[1],0,1)] %>% 
-#     .[,id:=1:nrow(.)]
 
-#   # data_temp_dt <- balance_data(data_temp_dt,var_ls_all)
 
-#   #=== causal forest analysis ===#
-#   X <- data_temp_dt[,var_ls,with=FALSE]
-#   Y <- data_temp_dt[,yield]
-#   W <- data_temp_dt[,trt]
+#/*=================================================*/
+#' # Download and process gridMET data
+#/*=================================================*/
+#' Used in 0_5_get_weather.R
+#' Objective: download gridMET data
 
-#   if (!is.na(cl_id)){
-#     cl <- data_temp_dt[,cl_id]
-#   }
+get_grid_MET <- function(var_name, year) {
+  # Ex)
+  # var_name = "srad"; year = 2012
+
+  target_url <- 
+    paste0(
+      "http://www.northwestknowledge.net/metdata/data/",
+      var_name, "_", year,
+      ".nc"
+    )
+
+  # = modified code = #
+  file_name <-
+     paste0(here("Shared/Data/gridMET-historical/"),
+      var_name, "_", year,
+      ".nc"
+  )
+
+  if (!file.exists(file_name)) {
+    downloader::download(
+      url = target_url,
+      destfile = file_name,
+      mode = 'wb'
+    )
+  }
+
+}
+
+
+# /*=================================================*/
+#' # Extract values from Raster  
+# /*=================================================*/
+
+#' This function extract values from gridMET data for each point data of well locations,
+#' and summarise those values by each well-id and year
+
+
+get_in_values_gridMET <- function(var_name, year){
+  # Ex) 
+  # var_name = "pet"; year = 2007
+
+  # /*===== read raster data ======*/
+  file_name <- paste0(var_name, "_", year, ".nc")
+  print(paste0("working on ", file_name))
+  temp_gmet <- terra::rast(here(paste0("Shared/Data/gridMET-historical/",file_name)))
+
+  # /*===== get in-season days ======*/
+  # + days since "1900-01-01"
+  start_day <- (ymd(paste0(year, "-04-01")) - ymd("1900-01-01")) %>% as.numeric
+  end_day <- (ymd(paste0(year, "-09-30")) - ymd("1900-01-01")) %>% as.numeric 
+
+  ls_in_day <- seq(start_day, end_day) %>% as.character
+
+  # /*===== Extract in-season daily weather values for site-level data (well)  ======*/
+  temp_res <- terra::extract(temp_gmet, vect(unique_well_sf)) %>%
+    data.table() %>%
+    # --- select only data for in-season days --- #
+    setnames(names(.)[-1], gsub(".*=", "", names(.)[-1])) %>%
+    .[,c("ID", ls_in_day), with=FALSE]
+ 
+  res_return <- temp_res %>%
+    melt(id.vars = "ID", variable.name = "day") %>%
+    .[,`:=`(
+      varibale = var_name,
+      year = year
+      )]
+
+  return(res_return)
+}
+
+
+# /*=================================================*/
+#' # GDD calculation
+# /*=================================================*/
+# tmmx = 80
+# tmmn = 56
+# base_temp = 50
+
+get_gdd <- function(tmmx, tmmn, base_temp) {
   
+  # /*===== check =====*/
+  tmmx <- pmin(tmmx, 86)
+  tmmn <- pmax(tmmn, 50)
+  # /*===== GDD calculation  =====*/
+  gdd <- pmax((tmmx+tmmn)/2-50, 0)
 
-#   #=== preliminary runs ===#
-#   Y_forest <- regression_forest(X,Y)
-#   Y_hat <- predict(Y_forest)$predictions
+  return(gdd)
+}
 
-#   W_forest <- regression_forest(X,W)
-#   W_hat <- predict(W_forest)$predictions
 
-#   # #=== raw forest ===#
-#   # tau_forest_raw <- causal_forest(X, Y, W, Y.hat=Y_hat,W.hat=W_hat)
-#   # var_imp <- variable_importance(tau_forest_raw)
-#   # var_imp > mean(var_imp)
+# /*=================================================*/
+#' # Get ssurgo data
+# /*=================================================*/
+# This function lets you download SSURGO dataset 
 
-#   #=== causal forest analysis ===#
-#   if (!is.na(cl_id)) {
-#     #--- if cl_id is present ---#
-#     tau_forest_temp <- causal_forest(X, Y, W,
-#       Y.hat=Y_hat,
-#       W.hat=W_hat,
-#       num.trees=4000,
-#       # min.node.size=10,
-#       cluster=cl,
-#       # tune.parameters=''
-#       # tune.parameters='all'
-#       tune.parameters=c("sample.fraction", "mtry", "honesty.fraction", "honesty.prune.leaves", "alpha", "imbalance.penalty")
-#     )
 
-#   } else {
-#     #--- if cl_id is NOT present ---#
-#     tau_forest_temp <- causal_forest(X, Y, W,
-#       Y.hat=Y_hat,
-#       W.hat=W_hat,
-#       num.trees=4000,
-#       min.node.size=10,
-#       # tune.parameters=''
-#       # tune.parameters='all'
-#       tune.parameters=c("sample.fraction", "mtry", "honesty.fraction", "honesty.prune.leaves", "alpha", "imbalance.penalty")
-#     )
-#   }
+get_ssurgo_props <- function(field, vars, summarize = FALSE) {
+  # field=unique_well_sp; vars = c("sandtotal_r", "claytotal_r")
+  # Get SSURGO mukeys for polygon intersection
+  ssurgo_geom <-
+    SDA_spatialQuery(
+      geom = field,
+      what = "geom",
+      db = "SSURGO",
+      geomIntersection = TRUE
+    ) %>%
+    st_as_sf()
+    # mutate(
+    #   area = as.numeric(st_area(.)),
+    #   area_weight = area / sum(area)
+    # )
 
-#   return(tau_forest_temp)
-# }
+  # Get soil properties for each mukey
+  mukeydata <- 
+    get_SDA_property(
+      property = vars,
+      method = "Weighted Average",
+      mukeys = ssurgo_geom$mukey,
+      top_depth = 0,
+      bottom_depth = 150
+    ) %>%
+    data.table()
+
+  ssurgo_data <- left_join(ssurgo_geom, mukeydata, by = "mukey")
+  
+  if (summarize == TRUE) {
+    ssurgo_data_sum <-
+      ssurgo_data %>%
+      data.table() %>%
+      .[,
+        lapply(.SD, weighted.mean, w = area_weight),
+        .SDcols = vars
+      ]
+    return(ssurgo_data_sum)
+  } else {
+    return(ssurgo_data)
+  }
+}
+
+
+
+#/*=================================================*/
+#' # Prepare a data set for prediction (ir share)
+#/*=================================================*/
+#' used in 1_regression_analysis.R
+# data <-temp$share_data[[1]]
+# vars <- c("balance_avg", "days_ab_35_avg")
+
+gen_pred_data_is <- function(data, vars) {
+
+  var_1 <- vars[1]
+  var_2 <- vars[2]
+
+  return_data <- 
+    expand.grid(
+      var_1 = quantile(data[, ..var_1] %>% unlist, prob = c(0.05, 0.5, 0.95)),
+      var_2 = quantile(data[, ..var_2] %>% unlist, prob = c(0.05, 0.5, 0.95)),
+      sat = 
+        seq(
+          min(data[, sat], na.rm = TRUE),
+          max(data[, sat], na.rm = TRUE),
+          length = 50
+        )
+    ) %>% 
+    data.table() %>% 
+    setnames(
+      c("var_1", "var_2"), 
+      vars
+    )
+
+  return(return_data)
+
+}
+
+#/*=================================================*/
+#' # Prepare a data set for prediction (total impact)
+#/*=================================================*/
+#' used in 1_regression_analysis.R
+# data <-temp$share_data[[1]]
+# vars <- c("balance_avg", "days_ab_35_avg")
+
+# data <- all_results$data[[1]]
+# data_avg <- all_results$share_data[[1]]
+# vars <- c("balance", "days_ab_35")
+# vars_avg <- c("balance_avg", "days_ab_35_avg")
+
+gen_pred_data_total <- function(data, vars, data_avg, vars_avg, sat_ls) {
+
+  var_1 <- vars[1]
+  var_2 <- vars[2]
+  var_avg_1 <- vars_avg[1]
+  var_avg_2 <- vars_avg[2]
+
+  return_data <- 
+    expand.grid(
+      var_1 = 
+        seq(
+          min(data[, ..var_1], na.rm = TRUE),
+          max(data[, ..var_1], na.rm = TRUE),
+          length = 50
+        ),
+      var_2 = 
+        seq(
+          min(data[, ..var_2], na.rm = TRUE),
+          max(data[, ..var_2], na.rm = TRUE),
+          length = 50
+        ),
+      var_avg_1 = quantile(data_avg[, ..var_1] %>% unlist, prob = c(0.05, 0.5, 0.95)),
+      var_avg_2 = quantile(data_avg[, ..var_2] %>% unlist, prob = c(0.05, 0.5, 0.95)),
+      sat = sat_ls
+    ) %>% 
+    data.table() %>% 
+    setnames(
+      c("var_1", "var_2", "var_avg_1", "var_avg_2"), 
+      c(vars, vars_avg)
+    ) %>% 
+    .[, 
+      sat_cat := cut(
+        sat, 
+        breaks = c(0, 0.01, sat_breaks),
+        include.lowest = TRUE
+      )  
+    ]
+
+  return(return_data)
+
+}
+
+
 
 
 

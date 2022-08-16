@@ -1,0 +1,310 @@
+---
+title: "How do groundwater allocation limits affect farmers’ groundwater use differently?"
+
+output:
+  bookdown::word_document2:
+    fig_caption: yes
+    number_sections: yes
+    global_numbering: true
+    reference_docx: word_template.docx
+    # reference_docx: word_template_format.docx
+    # pandoc_args: ["-Fpandoc-crossref"]
+bibliography: temp.bib
+eqnPrefix: 
+      - "Eq"
+---
+
+---
+title: "How do groundwater allocation limits affect farmers’ groundwater use differently?"
+author: Taro Mieno, Shunkei Kakimoto, Karina Schoengold 
+output:
+  html_document:
+    number_sections: yes
+    theme: readable
+    toc_float: yes
+    toc: yes
+    toc_depth: 3
+geometry: margin=1in
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(here)
+
+here::i_am("")
+
+# opts_knit$set(root.dir = "")
+# opts_knit$set(root.dir = here())
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  cache = FALSE,
+  comment = NA,
+  message = FALSE,
+  warning = FALSE,
+  tidy = FALSE,
+  cache.lazy = FALSE,
+  #--- figure ---#
+  dpi = 400,
+  fig.width = 7.5,
+  fig.height = 5,
+  out.width = "750px",
+  out.height = "500px"
+)
+
+# /*===== Basic Packages  =====*/
+# /*---- Data Wrangling ----*/
+library(data.table)
+library(tidyverse)
+library(DescTools)
+library(maps)
+
+# /*---- Visualization ----*/
+library(RColorBrewer)
+library(patchwork)
+library(ggplot2)
+library(ggthemes)
+library(ggpubr)
+library(viridis)
+library(grid)
+library(gridExtra)
+library(GGally)
+
+# /*---- Model Summary ----*/
+library(stats)
+library(modelsummary)
+library(flextable)
+library(officer)
+library(officedown)
+library(gt)
+
+```
+
+```{r echo = F, include = FALSE, cache = F}
+library(knitr)
+library(here)
+here::i_am("GitControlled/Writing/USDA_Report/progress_report.rmd")
+# opts_knit$set(root.dir = here())
+
+options(htmltools.dir.version = FALSE)
+options(knitr.duplicate.label = "allow")
+
+opts_chunk$set(
+  fig.align = "center",
+  fig.retina = 5,
+  warning = F,
+  message = F,
+  cache = F,
+  echo = F
+)
+```
+
+```{r, cache = FALSE}
+# === packages ===#
+library(tidyverse)
+library(data.table)
+library(sf)
+library(png)
+library(RColorBrewer)
+library(patchwork)
+library(plotly)
+library(magrittr)
+library(ggplot2)
+library(viridis)
+library(tmap)
+library(ggthemes)
+library(mgcv)
+library(ggpubr)
+library(flextable)
+library(officer)
+library(officedown)
+library(modelsummary)
+library(raster)
+library(bookdown)
+library(png)
+library(grid)
+library(causalTree)
+library(rpart)
+library(rattle)
+```
+
+# Summary
++ This study examined the heterogeneous impact of groundwater allocation policy on farmers' irrigation activity in Nebraska, and revealing which factor is the main driver to cause such a heterogeneity.
+
++ Results suggest that the impact is heterogeneous depending on in-season total precipitation. Farmers in regions where precipitation is low are more greatly affected by the allocation limits as compared to regions where precipitation is high. 
+
++ This implies that the allocation limits should be adjusted based on precipitation (according to spatial gradients in precipitation), while maintaining the same the total allocation limit. This would reduce the economic damage of the regulation to farmers.
+
+
+
+# Data
+
++ This study used well-level groundwater extraction data focusing on two Nebraska's NRDs: Lower Republican (LR) and Tri-Basin(TB) during 2008-2015. Throughout the period, LR (treatment group) had an allocation of 9 acre-inches per year, while TB (control group) had no allocation. Using five-mile buffer, we examine water use around the border between LR and TB. Metered groundwater use data was collected from the Republican River Compact Administration (RRCA) for irrigation wells located in LR and TB. 
+
+
+
+```{r map-well, echo=F}
+
+# data_w_LR_TB <- 
+#   here("Shared/Data/WaterAnalysis/data_w_LR_TB.rds") %>%
+#   readRDS()
+
+# nrd_bd <- here("Shared/Data/WaterAnalysis/NRD_bd/BND_NaturalResourceDistricts_DNR.shp") %>%
+#   st_read() %>%
+#   st_transform(., 4269) %>%
+#   filter(NRD_Name %in% c("Tri-Basin", "Lower Republican")) %>%
+#   cbind(., st_coordinates(st_centroid(.)))
+
+# well_sf <- data_w_LR_TB %>%
+#   unique(.,by="wellid") %>%
+#   .[,.(wellid, longdd, latdd)] %>%
+#   # --- the geographic coordinate in the well data is NAD83 (espg=4269)--- #
+#   st_as_sf(., coords = c("longdd","latdd"), crs = 4269)
+ 
+# ggplot()+
+#   geom_sf(data = nrd_bd, color="blue") +
+#    geom_text(data= nrd_bd,aes(x=X, y=Y, label=NRD_Name),
+#     color = "darkblue", fontface = "bold", check_overlap = FALSE) +
+#   geom_sf(data=well_sf, size=0.5) +
+#   theme_void()
+
+```
+
++ We control weather and soil conditions in the regression analysis. For weather variables, we obtained total precipitation (in inch) and total reference grass evaportranspiration (in inch) for the growing season (April to September) from daily weather records of gridMET database. For soil characteristics data, we collected the percentage of silt, clay, as well as hydraulic conductivity (in um/s), water holding capacity (in cm/cm), and slope (in percentage) from the the Soil Survey Geographic (SSURGO) database. 
+
+# Method
++ To estimate the treatment effect heterogeneity, we used Causal Forest (CF) model (@athey2016recursive; @wager2018estimation.) CF is a machine learning methods developed specifically for identifying heterogeneous treatment effects. We employed cluster-robust estimation to take into account natural clusters in the data. Each cluster consists of time-series observations of the wells located within the same region.
+
+
+# Preliminary Findings
++ Figure \@ref(fig:vis-cf-res) shows the estimated treatment effects (in inches) with the corresponding histogram for some internally selected variables. Among all the covariates, water holding capacity (i.e., awc_r), in-season total reference grass evaportranspiration (i.e., pet_in), and in-season total precipitation were selected as variables affecting treatment effect heterogeneity by our CF model. 
+
++ The result suggests that the treatment effects significantly vary by in-season total precipitation. For example, in areas in which in-season total precipitation was high, say 20 inches, a farmer reduced his water usage by about 2.2 acre-inches on average than what would be without allocation limit. Meanwhile, the areas in which in-season total precipitation was low, say 12 inches, a farmer reduced his water usage by about 4 acre-inches on average than the counterfactual outcome. 
+
++ This means that the current uniform allocation limit design may be more binding in areas with less precipitation.
+
+
+```{r, cache=T}
+# === setup === #
+library(here)
+source(here("GitControlled/Codes/0_1_ls_packages.R"))
+source(here("GitControlled/Codes/0_0_functions.R"))
+
+# /*===== Data =====*/
+reg_data <- 
+  here("Shared/Data/WaterAnalysis/comp_reg_dt.rds") %>%
+  readRDS() %>%
+  .[year>=2008 & usage <= 40,] %>%
+  .[,tr_year:=factor(paste0(tr,year))] %>%
+  .[,trs_year:=factor(paste0(trs,year))]
+
+#/*--------------------------------*/
+#' ## Preparation
+#/*--------------------------------*/
+# /*===== control variables =====*/
+# remove gdd_in
+cov_ls <- c(
+  # --- weather --- #
+  "pr_in","pet_in",
+  # --- soil --- #
+  "silttotal_r", "claytotal_r", "slope_r", "ksat_r", "awc_r"
+  )
+
+
+data <- reg_data
+
+# /*===== Training Dataset  =====*/
+# --- dependent variable --- #
+Y <- data[, usage]
+# --- treatment indicator --- #
+T <- data[, treat2]
+# --- features --- #
+X <- data[, ..cov_ls]
+# --- cluster  --- #
+cl_var <- data[,tr_year]
+
+#/*--------------------------------*/
+#' ## 1st CF
+#/*--------------------------------*/
+set.seed(23456)
+
+forest_W <- regression_forest(X, T, num.trees = 4000, clusters = cl_var)
+W_hat <- predict(forest_W)$predictions
+
+forest_Y <- regression_forest(X, Y, num.trees = 4000, clusters = cl_var)
+Y_hat <- predict(forest_Y)$predictions
+
+cf_raw <- causal_forest(
+  X=X,
+  Y=Y,
+  W=T, 
+  Y.hat = Y_hat, 
+  W.hat = W_hat,
+  clusters = cl_var,
+  tune.parameters = "all",
+  num.trees = 4000
+)
+
+
+# average_treatment_effect(cf_raw, target.sample = "treated")
+
+varimp = variable_importance(cf_raw)
+selected_vars = which(varimp > mean (varimp))
+se_cov <- data[,cov_ls[selected_vars], with=FALSE]
+
+vis_cf_raw <- gen_impact_viz(
+  cf_res= cf_raw,
+  data_base=data,
+  treat_var='treat2',
+  var_ls= cov_ls,
+  var_ls_int = cov_ls
+)
+
+#/*--------------------------------*/
+#' ## 2nd CF
+#/*--------------------------------*/
+cf_res <- causal_forest(
+  X=se_cov,
+  Y=Y,
+  W=T, 
+  Y.hat = Y_hat, 
+  W.hat = W_hat,
+  clusters = cl_var,
+  sample.fraction = 0.4,
+  num.trees = 4000,
+  tune.parameters = "all",
+  # tune.parameters = c(""),
+)
+
+#/*--------------------------------*/
+#' ## Visualization
+#/*--------------------------------*/
+vis_cf_res <-
+  gen_impact_viz(
+  cf_res= cf_res,
+  data_base=data,
+  treat_var='treat2',
+  var_ls= cov_ls[selected_vars],
+  var_ls_int = cov_ls[selected_vars]
+)
+```
+
+```{r vis-cf-res,  fig.width=7, fig.height=5, fig.cap ="Predicted treatment heterogeneity. The top row shows the histograms for each variable, and the bottom row shows the predicted treatment effects. In each panel in the bottom row, the grey area indicates 95% CI for heterogeneous treatment effects."}
+vis_cf_res
+```
+
+# Next Work
++ Although treatment assignments (9 acre-inches per year for LR, and no limitation on TB) are consistent through 2008-2015, this period includes two different allocation periods (1st period: 2008-2012, 2nd period: 2013-2017). In each allocation period, a farmer was allowed to carry over unused allocation into the next period. For example, a farmer in LR can use 9 acre-inches per $\times$ 5 years = 45 acre-inches through the 1st allocation period. But if he used only 30 acre-inches during this period, then he can use the remainder 15 inches for the 2nd allocation period. That is, during the 2nd period, it was not always the case that all the farmers in LR received 9 acre-inches per year allocation limits. Some farmers who saved sizable amount of water in the 1st allocation period might have used more than 9 acre-inches in the 2nd period. So, if this is the case, including the data related to 2nd allocation period would bias the treatment effect estimates. We are addressing this potential issue carefully. 
+
+
+# References
+
+<div id="refs"></div>
+
+
+
+
+
+
+
+

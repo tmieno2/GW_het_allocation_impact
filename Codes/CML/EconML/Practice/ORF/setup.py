@@ -1,0 +1,19 @@
+# Set up
+
+import econml
+
+# Main imports
+from econml.orf import DMLOrthoForest, DROrthoForest
+from econml.dml import CausalForestDML
+from econml.sklearn_extensions.linear_model import WeightedLassoCVWrapper, WeightedLasso, WeightedLassoCV
+
+# Helper imports
+import numpy as np
+from itertools import product
+from sklearn.linear_model import Lasso, LassoCV, LogisticRegression, LogisticRegressionCV
+import matplotlib.pyplot as plt
+
+
+# Treatment effect function
+def exp_te(x):
+    return np.exp(2*x[0])
