@@ -58,10 +58,7 @@ library(GGally)
 library(stats)
 library(modelsummary)
 library(flextable)
-library(officer)
-library(officedown)
 library(gt)
-
 ```
 
 ```{r, echo=F}
@@ -94,14 +91,14 @@ source(here("GitControlled/Codes/0_0_functions.R"))
 ## Data in the 5 miles buffer
 
 ```{r}
-reg_data_5mi_raw <- 
-	here("Shared/Data/WaterAnalysis/reg_data_5mi_raw.rds") %>%
-	readRDS()
+reg_data_5mi_raw <-
+  here("Shared/Data/WaterAnalysis/reg_data_5mi_raw.rds") %>%
+  readRDS()
 
 # - Data on TB - #
-TB_5mi <- reg_data_5mi_raw[nrdname=="Tri-Basin",]
+TB_5mi <- reg_data_5mi_raw[nrdname == "Tri-Basin", ]
 # - Data on LR - #
-LR_5mi <- reg_data_5mi_raw[nrdname=="Lower Republican",]
+LR_5mi <- reg_data_5mi_raw[nrdname == "Lower Republican", ]
 ```
 
 ### LR Data
@@ -113,24 +110,23 @@ LR_5mi <- reg_data_5mi_raw[nrdname=="Lower Republican",]
 # Aggregate "LR_5mi" to yearly owner-level data
 LR_5mi_y_owner <-
   LR_5mi %>%
-  .[,.(
-    usage = weighted.mean(usage, acres/sum(acres)),
+  .[, .(
+    usage = weighted.mean(usage, acres / sum(acres)),
     treat2 = mean(treat2),
     # --- soil --- #
-    silttotal_r = weighted.mean(silttotal_r, acres/sum(acres)),
-    claytotal_r = weighted.mean(claytotal_r, acres/sum(acres)),
-    slope_r = weighted.mean(slope_r, acres/sum(acres)),
-    ksat_r = weighted.mean(ksat_r, acres/sum(acres)),
-    awc_r = weighted.mean(awc_r, acres/sum(acres)),
-    # --- weather --- #    
-    pr_in = weighted.mean(pr_in, acres/sum(acres)),
-    pet_in = weighted.mean(pet_in, acres/sum(acres)),
-    gdd_in = weighted.mean(gdd_in, acres/sum(acres)),
+    silttotal_r = weighted.mean(silttotal_r, acres / sum(acres)),
+    claytotal_r = weighted.mean(claytotal_r, acres / sum(acres)),
+    slope_r = weighted.mean(slope_r, acres / sum(acres)),
+    ksat_r = weighted.mean(ksat_r, acres / sum(acres)),
+    awc_r = weighted.mean(awc_r, acres / sum(acres)),
+    # --- weather --- #
+    pr_in = weighted.mean(pr_in, acres / sum(acres)),
+    pet_in = weighted.mean(pet_in, acres / sum(acres)),
+    gdd_in = weighted.mean(gdd_in, acres / sum(acres)),
     # --- tr --- #
     cntyname_fix = unique(cntyname_fix)
   ), by = .(nrd_owner_name, year)] %>%
-  .[,county_year := paste0(cntyname_fix, "_", year)]
-
+  .[, county_year := paste0(cntyname_fix, "_", year)]
 ```
 
 ### TB Data
@@ -143,7 +139,7 @@ se_vars <- names(LR_5mi_y_owner)
 TB_5mi_y_well <-
   TB_5mi %>%
   # use "cntyname", not "cntyname_fix"
-  .[,county_year := paste0(cntyname, "_", year)] %>%
+  .[, county_year := paste0(cntyname, "_", year)] %>%
   .[, ..se_vars]
 
 reg_data_5mi <- bind_rows(LR_5mi_y_owner, TB_5mi_y_well)
@@ -156,10 +152,10 @@ reg_data_5mi <- bind_rows(LR_5mi_y_owner, TB_5mi_y_well)
 # remove gdd_in
 cov_ls <- c(
   # --- weather --- #
-  "pr_in","pet_in",
+  "pr_in", "pet_in",
   # --- soil --- #
   "silttotal_r", "claytotal_r", "slope_r", "ksat_r", "awc_r"
-  )
+)
 
 data <- reg_data_5mi
 Y <- data[, usage]
@@ -171,44 +167,46 @@ cl_var <- data[, county_year] %>% factor()
 ### 1st CF
 
 ```{r, echo=F}
-#/*--------------------------------*/
+# /*--------------------------------*/
 #' ## 1st CF
-#/*--------------------------------*/
+# /*--------------------------------*/
 set.seed(23456)
 
 forest_W_cl <- regression_forest(
-  X, T, 
+  X, T,
   clusters = cl_var,
-  num.trees = 4000)
+  num.trees = 4000
+)
 W_hat <- predict(forest_W_cl)$predictions
 
 forest_Y_cl <- regression_forest(
-  X, Y, 
+  X, Y,
   clusters = cl_var,
-  num.trees = 4000)
+  num.trees = 4000
+)
 Y_hat <- predict(forest_Y_cl)$predictions
 
 cf_raw_cl <- causal_forest(
-  X=X,
-  Y=Y,
-  W=T, 
-  Y.hat = Y_hat, 
+  X = X,
+  Y = Y,
+  W = T,
+  Y.hat = Y_hat,
   W.hat = W_hat,
   clusters = cl_var,
   tune.parameters = "all",
   num.trees = 4000
 )
 
-varimp = variable_importance(cf_raw_cl)
-selected_vars = which(varimp > mean (varimp))
+varimp <- variable_importance(cf_raw_cl)
+selected_vars <- which(varimp > mean(varimp))
 # selected_vars = which(varimp/mean(varimp) > 0.2)
-se_cov <- data[,cov_ls[selected_vars], with=FALSE]
+se_cov <- data[, cov_ls[selected_vars], with = FALSE]
 
 vis_cf_raw_cl <- gen_impact_viz(
-  cf_res= cf_raw_cl,
-  data_base=data,
-  treat_var='treat2',
-  var_ls= cov_ls,
+  cf_res = cf_raw_cl,
+  data_base = data,
+  treat_var = "treat2",
+  var_ls = cov_ls,
   var_ls_int = cov_ls
 )
 vis_cf_raw_cl
@@ -216,15 +214,73 @@ vis_cf_raw_cl
 
 ### 2nd CF
 
+```{r}
+
+forest_W_cl <-
+  probability_forest(
+    X = data[, .(pr_in, pet_in, silttotal_r, claytotal_r, slope_r, ksat_r, awc_r)],
+    Y = data[, factor(treat2)],
+    num.trees = 4000
+  )
+
+W_hat <- predict(forest_W_cl)$predictions[, 2]
+
+forest_Y_cl <-
+  regression_forest(
+    X = data[, .(pr_in, pet_in, silttotal_r, claytotal_r, slope_r, ksat_r, awc_r)],
+    Y = data[, usage],
+    num.trees = 4000
+  )
+
+Y_hat <- predict(forest_Y_cl)$predictions
+
+het_cov_ls <- c(
+  # --- weather --- #
+  "pr_in", "pet_in"
+)
+
+data[, Y_hat := forest_Y_cl$predictions]
+data[, y_tilde := Y - Y_hat]
+data[, W_hat := forest_W_cl$predictions[, 2]]
+data[, w_tilde := treat2 - W_hat]
+
+summary(lm(y_tilde ~ I(pr_in * w_tilde) + I(pet_in * w_tilde), data = data))
+
+cf_trained <-
+  causal_forest(
+    X = data[, ..het_cov_ls],
+    Y = data[, usage],
+    W = data[, treat2],
+    Y.hat = Y_hat,
+    W.hat = W_hat,
+    tune.parameters = "all",
+    tune.num.trees = 500,
+    tune.num.reps = 100,
+    tune.num.draws = 1000
+  )
+
+cf_trained$predictions
+
+predict(cf_trained, newdata = data)
+
+gen_impact_viz(
+  cf_res = cf_trained,
+  data_base = data,
+  treat_var = "treat2",
+  var_ls = het_cov_ls,
+  var_ls_int = het_cov_ls
+)
+```
+
 ```{r, echo=F}
-#/*--------------------------------*/
+# /*--------------------------------*/
 #' ## 2nd CF
-#/*--------------------------------*/
+# /*--------------------------------*/
 cf_res_cl <- causal_forest(
-  X=se_cov,
-  Y=Y,
-  W=T, 
-  Y.hat = Y_hat, 
+  X = se_cov,
+  Y = Y,
+  W = T,
+  Y.hat = Y_hat,
   W.hat = W_hat,
   clusters = cl_var,
   # sample.fraction = 0.4,
@@ -233,17 +289,17 @@ cf_res_cl <- causal_forest(
   # tune.parameters = c(""),
 )
 
-#/*--------------------------------*/
+# /*--------------------------------*/
 #' ## Visualization
-#/*--------------------------------*/
+# /*--------------------------------*/
 vis_cf_res_cl <-
   gen_impact_viz(
-  cf_res= cf_res_cl,
-  data_base=data,
-  treat_var='treat2',
-  var_ls= cov_ls[selected_vars],
-  var_ls_int = cov_ls[selected_vars]
-)
+    cf_res = cf_res_cl,
+    data_base = data,
+    treat_var = "treat2",
+    var_ls = cov_ls[selected_vars],
+    var_ls_int = cov_ls[selected_vars]
+  )
 vis_cf_res_cl
 ```
 

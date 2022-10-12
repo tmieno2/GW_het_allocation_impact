@@ -1,0 +1,229 @@
+```{r}
+######################################
+# Data visualization for presentation
+######################################
+# written by Taro Mieno on 05/30/2017
+
+# ===================================
+# 0. Preliminary Operations
+# ===================================
+library(broom)
+library(here)
+library(data.table)
+library(sf)
+library(tidyverse)
+
+#--------------------------
+# Load data
+#--------------------------
+#--- pumping data ---#
+data <- readRDS(here("Shared/Data/data_buffer.rds"))
+
+data_sf <-
+  st_as_sf(data, coords = c("longdd", "latdd")) %>%
+  st_set_crs(4269)
+
+#--- NRDs spatial polygons ---#
+NRD_lcc <- readRDS(here("Shared/Data/Geographic/NRD_utm.rds"))
+NRD_td <- tidy(NRD_lcc) %>% data.table()
+
+# ===================================
+# All NRDs
+# ===================================
+#--- the list of NRDs to work with ---#
+nrd_list <- c(
+  "Middle Republican",
+  "Upper Republican",
+  "Lower Republican",
+  "Tri-Basin",
+  "Twin Platte",
+  "Central Platte",
+  "Little Blue"
+)
+
+#--- import NRD shape file ---#
+NRD <-
+  st_read(dsn = here("Shared/Data/Geographic/NRDUTM"), "NRDUTM") %>%
+  mutate(
+    NRD_Name = as.character(NRD_Name),
+    NRD_Name = ifelse(NRD_Name == "Little Bue", "Little Blue", NRD_Name)
+  ) %>%
+  filter(NRD_Name %in% nrd_list)
+
+#--- tidy the data for ggplot() ---#
+NRD_td <- NRD %>%
+  as("Spatial") %>%
+  tidy(region = "NRD_Name") %>%
+  data.table()
+```
+
+## Allocation History
+
+```{r}
+#--------------------------
+# Visualization
+#--------------------------
+centroids <- st_centroid(NRD) %>%
+  as("Spatial") %>%
+  coordinates(.)
+
+nrd_alloc_03_04 <- cbind(NRD$NRD_Name, centroids) %>%
+  data.table() %>%
+  setnames(names(.), c("nrd", "long", "lat")) %>%
+  mutate(long = as.numeric(long), lat = as.numeric(lat)) %>%
+  data.table() %>%
+  .[nrd == "Lower Republican", alloc := "No limit"] %>%
+  .[nrd == "Middle Republican", alloc := "No limit"] %>%
+  .[nrd == "Upper Republican", alloc := "15"] %>%
+  .[nrd == "Tri-Basin", alloc := "No limit"] %>%
+  .[nrd == "Little Blue", alloc := "No limit"] %>%
+  .[nrd == "Central Platte", alloc := "No limit"] %>%
+  .[nrd == "Twin Platte", alloc := "No limit"] %>%
+  .[nrd == "Central Platte", lat := 4515000]
+
+nrd_alloc_05_07 <- cbind(NRD$NRD_Name, centroids) %>%
+  data.table() %>%
+  setnames(names(.), c("nrd", "long", "lat")) %>%
+  mutate(long = as.numeric(long), lat = as.numeric(lat)) %>%
+  data.table() %>%
+  .[nrd == "Lower Republican", alloc := "11 or 12"] %>%
+  .[nrd == "Middle Republican", alloc := "13"] %>%
+  .[nrd == "Upper Republican", alloc := "13.5"] %>%
+  .[nrd == "Tri-Basin", alloc := "No limit"] %>%
+  .[nrd == "Little Blue", alloc := "No limit"] %>%
+  .[nrd == "Central Platte", alloc := "No limit"] %>%
+  .[nrd == "Twin Platte", alloc := "No limit"] %>%
+  .[nrd == "Central Platte", lat := 4515000]
+
+nrd_alloc_08_15 <- cbind(NRD$NRD_Name, centroids) %>%
+  data.table() %>%
+  setnames(names(.), c("nrd", "long", "lat")) %>%
+  mutate(long = as.numeric(long), lat = as.numeric(lat)) %>%
+  data.table() %>%
+  .[nrd == "Lower Republican", alloc := "9"] %>%
+  .[nrd == "Middle Republican", alloc := "12"] %>%
+  .[nrd == "Upper Republican", alloc := "13"] %>%
+  .[nrd == "Tri-Basin", alloc := "No limit \n (9 for one township)"] %>%
+  .[nrd == "Little Blue", alloc := "No limit"] %>%
+  .[nrd == "Central Platte", alloc := "No limit"] %>%
+  .[nrd == "Twin Platte", alloc := "No limit"] %>%
+  .[nrd == "Central Platte", lat := 4515000]
+
+nrd_alloc_hist <- cbind(NRD$NRD_Name, centroids) %>%
+  data.table() %>%
+  setnames(names(.), c("nrd", "long", "lat")) %>%
+  mutate(long = as.numeric(long), lat = as.numeric(lat)) %>%
+  data.table() %>%
+  .[nrd == "Lower Republican", alloc := "non - 11(12) - 9"] %>%
+  .[nrd == "Middle Republican", alloc := "non - 13 - 12"] %>%
+  .[nrd == "Upper Republican", alloc := "15 - 13.5 - 13"] %>%
+  .[nrd == "Tri-Basin", alloc := "non (9 for one township)"] %>%
+  .[nrd == "Little Blue", alloc := "non"] %>%
+  .[nrd == "Central Platte", alloc := "non"] %>%
+  .[nrd == "Twin Platte", alloc := "non"] %>%
+  .[nrd == "Central Platte", lat := 4515000]
+
+g_NRDs <- ggplot() +
+  geom_polygon(
+    data = NRD_td,
+    aes(x = long, y = lat, group = group, fill = id),
+    size = 0.4,
+    color = "black",
+    alpha = 0.4
+  ) +
+  coord_equal(ratio = 1) +
+  labs(x = "", y = "") + # labels
+  guides(fill = guide_legend(nrow = 3, byrow = TRUE)) +
+  theme(
+    legend.position = "bottom",
+    axis.ticks.y = element_blank(),
+    axis.text.y = element_blank(), # get rid of x ticks/text
+    axis.ticks.x = element_blank(),
+    axis.text.x = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_blank(),
+    legend.text = element_text(size = 8)
+  )
+# ggsave(g_energy,file=paste('./Graphs/energy_records/energy_sp_dist_',year_ls[i],'.pdf'))
+
+g_NRDs +
+  geom_text(
+    data = nrd_alloc_03_04,
+    aes(x = long, y = lat, label = alloc),
+    color = "black",
+    size = 4,
+    family = "Times"
+  )
+
+ggsave(file = "GitControlled/Presentation/alloc_03_04.png", width = 8, height = 6, dpi = 600)
+
+g_NRDs +
+  geom_text(
+    data = nrd_alloc_05_07,
+    aes(x = long, y = lat, label = alloc),
+    color = "black",
+    size = 4,
+    family = "Times"
+  )
+
+ggsave(file = "GitControlled/Presentation/alloc_05_07.png", width = 8, height = 6, dpi = 600)
+
+g_NRDs +
+  geom_text(
+    data = nrd_alloc_08_15,
+    aes(x = long, y = lat, label = alloc),
+    color = "black",
+    size = 4,
+    family = "Times"
+  )
+
+ggsave(file = "GitControlled/Presentation/alloc_08_15.png", width = 8, height = 6, dpi = 600)
+
+g_NRDs +
+  geom_text(
+    data = nrd_alloc_08_15,
+    aes(x = long, y = lat, label = alloc),
+    color = "black",
+    size = 2.5,
+    family = "Times"
+  ) +
+  theme(
+    legend.position = "none"
+  )
+
+ggsave(file = "./Graphs/alloc_08_15_no_legend.pdf", width = 7, height = 5)
+
+g_NRDs +
+  geom_text(
+    data = nrd_alloc_hist,
+    aes(x = long, y = lat, label = alloc),
+    color = "black",
+    size = 2,
+    family = "Times"
+  ) +
+  theme(
+    legend.position = "none"
+  )
+
+ggsave(file = "./Graphs/alloc_hist_no_legend.pdf", width = 5, height = 4)
+```
+
+## Focus area
+
+```{r}
+NRD_focus <- filter(NRD, NRD_Name %in% c("Lower Republican", "Tri-Basin"))
+
+data_sf_focus <-
+  data_sf %>%
+  st_transform(st_crs(NRD)) %>%
+  .[NRD_focus, ]
+
+g_focus_area <-
+  ggplot() +
+  geom_sf(data = NRD_focus, color = "blue", size = 1) +
+  geom_sf(data = data_sf_focus, size = 0.2) +
+  theme_void()
+
+ggsave(file = here("GitControlled/Presentation/focus_area.png"), g_focus_area, width = 7, height = 5, dpi = 600)
+```

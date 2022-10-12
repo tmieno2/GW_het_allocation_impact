@@ -1,0 +1,28 @@
+/*-- scss:defaults --*/
+
+/*-- scss:rules --*/
+h1 {
+  font-size: 1.5em !important;
+  text-transform: none;
+}
+
+h2 {
+  font-size: 1.2em !important;
+}
+
+h3 {
+  font-size: 1em !important;
+}
+
+p {
+  font-size: 0.8em !important;
+}
+
+li {
+  font-size: 0.8em !important;
+}
+
+.reveal h1 {
+  text-transform: none;
+  font-family: sans-serif
+}

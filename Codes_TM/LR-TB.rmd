@@ -1,0 +1,322 @@
+
+# Preliminary Operations
+
+```{r}
+#--- library ---#
+# source('~/Box/R_libraries_load/library.R')
+library(here)
+library(lfe)
+library(ranger)
+library(data.table)
+library(tidyverse)
+library(grf)
+
+# === define functions ===#
+source(here("GitControlled/Codes_TM/0_0_functions.R"))
+```
+
+# Data preparation
+
+## Import the data
+```{r}
+ir_data <-
+  readRDS(here("Shared/Data/ir_reg.rds")) %>%
+  .[source %in% c("Meter", "METER", "metered"), ] %>%
+  .[, trs := paste(twnid, rngid, section, sep = "_")] %>%
+  .[, tr := paste(twnid, rngid, sep = "_")] %>%
+  .[, phase1 := ifelse(year < 2008, 1, 0)] %>%
+  .[, phase2 := ifelse(year >= 2008, 1, 0)]
+```
+
+## Define treatment variables and others
+
+`t5r22`: township 5 range 22 located within the Tri-Basin has allocation limits.
+
++ `LR`: "Lower Republican"
++ `Tri-Basin`: "Tri-Basin"
+
+
++ 2006-2007: 
++ 2008-2012: 
++ 2013-2017:
++ 2018-2022:
+
+```{r}
+#--- data ---#
+data_w_W1 <-
+  ir_data %>%
+  .[Low_Tri_5mi == 1, ] %>%
+  .[, `:=`(
+    #--- LR east vs TB (2006 - 2007)---#
+    treat1e =
+      ifelse(
+        phase1 == 1 & nrdname == "Lower Republican" & in_east == 1,
+        1, 0
+      ),
+    #--- LR west vs TB (2006 - 2007) ---#
+    treat1w =
+      ifelse(
+        phase1 == 1 & nrdname == "Lower Republican" & in_west == 1,
+        1, 0
+      ),
+    #--- LR vs TB (2008 - 2015)---#
+    treat2 =
+      ifelse(
+        ((nrdname == "Lower Republican" & phase2 == 1) | (t5r22 == 1 & year >= 2009)),
+        1, 0
+      )
+  )] %>%
+  .[, `:=`(
+    mean_precip = mean(precip_in),
+    mean_gdd = mean(gdd_in),
+    mean_tmin = mean(tmin_in),
+    mean_tmax = mean(tmax_in)
+  ), by = wellid]
+
+# saveRDS(data_w_W1, here("Shared/Data/WaterAnalysis/data_w_LR_TB.rds"))
+# unique(data_w_W1$year) %>% sort()
+```
+
+
+
+```{r}
+#--- data exploration ---#
+# ir_data$year%>%unique() 2007-2015
+# subset_cols <- c('precip_in', 'tmin_in', 'tmax_in', 'gdd_in',
+# 	'silt_pct', 'clay_pct', 'slope', 'kv', 'awc', "mean_precip", "mean_gdd", "mean_tmin", "mean_tmax")
+
+# temp_wellid <- data_w_W1[wellid==709, subset_cols, with=FALSE]
+# nrow(temp_wellid)
+# unique(data_w_W1$nrdname)
+
+
+# /*----------------------------------*/
+#' ## individual
+# /*----------------------------------*/
+
+#### ==== Cases ====####
+# (1) 11 inches (LR east) vs no limit (TB) :2006 - 2007
+# (2) 12 inches (LR west) vs no limit (TB) :2006 - 2007
+# (3) 11 inches (LR) vs no limit (TB) :2008 - 2015
+
+### --- Covariates ---###
+#-- Weather --#
+#' total precipitation : precip_in
+#' the mean of minimum and maximum temperature for the growing season (Apr-Sep)
+#'
+#-- Soil --#
+#' the percentage of sand :
+#' the percentage of clay
+#' the percentage of silt
+#' hydraulic conductivity
+#' water holding capacity
+#' slope
+
+#++++ Water use ++++#
+#' in season precipitation: precip_in
+#' growing degree days: gdd_in
+#' silt percentage: silt_pct
+#' clay percentage: clay_pct
+#' hydraulic conductivity: kv
+#' water holding capacity: awc
+
+# cov_ls <- c('precip_in','gdd_in','slope','kv','awc')
+
+# Growing degree days (gdd)
+```
+
+# CATE estimation
+
+Treatments:
+
++ (1) 11 inches (LR east) vs no limit (TB) :2006 - 2007
++ (2) 12 inches (LR west) vs no limit (TB) :2006 - 2007
++ (3) 11 inches (LR) vs no limit (TB) :2008 - 2015
+
+Covariates:
+
++ in season precipitation: precip_in
++ growing degree days: gdd_in
++ silt percentage: silt_pct
++ clay percentage: clay_pct
++ hydraulic conductivity: kv
++ water holding capacity: awc
++ slope: slope
+
+```{r}
+xw_ls <- c(
+  "precip_in", "tmin_in", "tmax_in", "gdd_in",
+  "silt_pct", "clay_pct", "slope", "kv", "awc"
+)
+
+all_vars <- c(xw_ls, "usage", "treat2", "tr", "year")
+
+# === Case 3: 2008-2012 ===#
+data <-
+  data_w_W1 %>%
+  .[year >= 2008, ] %>%
+  .[year <= 2012, ] %>%
+  .[, ..all_vars] %>%
+  .[usage <= 40, ] %>% # Why?? -> make upper limit
+  .[, tr_year := factor(paste0(tr, year))] %>%
+  na.omit()
+```
+
+```{r}
+data[, usage] %>% hist(breaks = 50)
+```
+
+## First stage
+
+```{r}
+#| cache: true
+
+X <- data[, xw_ls, with = FALSE]
+Y <- data[, usage]
+W <- data[, treat2]
+cl <- data[, tr_year]
+
+#--- Outcome model ---#
+rf_trained_Y <-
+  regression_forest(
+    X = X,
+    Y = Y,
+    num.trees = 4000,
+    cluster = cl,
+    tune.parameters = "all",
+    tune.num.trees = 500,
+    tune.num.reps = 100
+  )
+
+data[, Y_hat := rf_trained_Y$predictions]
+```
+
+```{r}
+ggplot(data) +
+  geom_point(aes(y = usage, x = Y_hat))
+```
+
+```{r}
+#| eval: false
+
+# === Propensity model ===#
+pf_trained_T <-
+  ranger(
+    x = X,
+    y = factor(W),
+    num.trees = 4000,
+    probability = TRUE
+  )
+
+data[, W_hat := pf_trained_T$predictions[, 2]]
+
+# data[, W_hat := 1 / 2]
+```
+
+## Second stage: CF
+
+First select the variables to include as the driver of heterogeneity.
+
+```{r}
+#--- Select variables to include as the heterogeneity driver ---#
+cf.raw <-
+  causal_forest(
+    X = X,
+    Y = Y,
+    W = W,
+    Y.hat = data[, Y_hat],
+    W.hat = 1 / 2,
+    clusters = cl
+  )
+
+var_imp <- variable_importance(cf.raw)
+selected_idx <- which(var_imp > mean(var_imp)) # "precip_in" "gdd_in"
+names(X)[selected_idx]
+```
+
+Now, run the second stage estimation with the selected variables. Note that the other variables are still controlled because of the first stage estimation.
+
+$$
+\begin{aligned}
+\tilde{Y_i} = \theta(X)\tilde{T_i} + v_i
+\end{aligned}
+$$
+
+```{r}
+#| cache: true
+#--- Train CF ---#
+cf_trained <-
+  causal_forest(
+    X = X[, names(X)[selected_idx], with = FALSE],
+    Y = Y,
+    W = W,
+    Y.hat = data[, Y_hat],
+    W.hat = data[, W_hat],
+    clusters = cl,
+    num.trees = 4000,
+    tune.parameters = "all",
+    tune.num.trees = 500,
+    tune.num.reps = 100
+  )
+```
+
+### Estimate $\theta(X)$:
+
+```{r}
+#--- assessing treatment heterogeneity ---#
+gen_impact_viz(
+  cf_res = cf_trained,
+  data_base = data,
+  treat_var = "treat2",
+  var_ls = names(X)[selected_idx],
+  var_ls_int = names(X)[selected_idx]
+)
+```
+
+### ATE
+
+```{r}
+#--- Out-of-bag CATE prediction ---#
+oob_cf1_pred <- predict(cf1, estimate.variance = TRUE)
+hist(oob_cf1_pred$predictions)
+
+#--- The conditional average treatment effect on the full sample (CATE) ---#
+average_treatment_effect(cf1, target.sample = "all")
+```
+
+## GAM
+
+```{r}
+library(mgcv)
+
+data[, Y_tilde := Y - Y_hat]
+data[, W_tilde := treat2 - W_hat]
+
+gam_res <-
+  gam(
+    Y_tilde ~ s(precip_in, k = 5, by = W_tilde),
+    data = data
+  )
+```
+
+```{r}
+eval_data <-
+  data.table(
+    precip_in = seq(
+      quantile(data_reg_case3$precip_in, prob = 0.05),
+      quantile(data_reg_case3$precip_in, prob = 0.95),
+      length = 1000
+    ),
+    gdd_in = mean(data_reg_case3$precip_in),
+    W_tilde = 1
+  )
+
+eval_data[, theta_hat := predict(gam_res, newdata = eval_data)]
+
+ggplot(data = eval_data) +
+  geom_line(aes(y = theta_hat, x = precip_in))
+
+# data[, mean(usage), by = .(year, treat2)]
+fixest::feols(usage ~ precip_in | wellid + year, data = data_w_W1[treat2 == 0 & usage <= 40, ])
+fixest::feols(usage ~ gdd_in | wellid + year, data = data_w_W1[treat2 == 0 & usage <= 40, ])
+```

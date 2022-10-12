@@ -1,0 +1,89 @@
+---
+title: "Heterogeneous impact of groundwater allocation limit: A case study for Lower Republican NRD"
+author: Taro Mieno, Shunkei Kakimoto, Karina Schoengold  
+format: 
+  revealjs:
+    theme: [default, custom.css]
+    logo: DWFI-Color-Horizontal.png
+editor: visual
+---
+
+```{r}
+#| include: false
+library(tidyverse)
+library(here)
+library(data.table)
+```
+
+## Background
+
++ 
+
+## Allocation Limit History in Southwest Nebraska
+
+### Pre-2005
+
+```{r}
+knitr::include_graphics(here("Presentation/alloc_03_04.png"))
+```
+
+## Allocation Limit History in Southwest Nebraska
+
+### 2005-207
+
+```{r}
+knitr::include_graphics(here("Presentation/alloc_05_07.png"))
+```
+
+## Allocation Limit History in Southwest Nebraska
+
+### 2008-2015
+
+```{r}
+knitr::include_graphics(here("Presentation/alloc_08_15.png"))
+```
+
+## Focus Area and Period
+
+Lower Republican and Tri-Basin NRDs observed for 2008 through 2012 (9 inches per year for 5 years, 45 inches total)
+
+```{r}
+knitr::include_graphics(here("Presentation/focus_area.png"))
+```
+
+
+## Research Question
+
++ Did agricultural producers reduce groundwater use in response to the allocation limit of 9 inches per acre during the 2008-2012 period? If so, how much?
++ What factors affect the impact of the allocation limit on groundwater use (e.g., precipitation)? 
+
+## Data
+
+Observational unit: well ( wells in total)
+Temporal resolution: annual
+
+### Variables
++ groundwater use 
++ treatment status: 1 if in LRNRD
++ weather
+  - precipitation
+  - evapotranspiration
+  - GDD
++ soil characteristics
+  - silt, clay, sand percentage
+  - available water capacity
+  - saturated hydraulic conductivity
+
+## Strategy 
+
+Compare groundwater use of the two groups.
+
++ Control group: wells in Tri-Basin NRD
++ Treatment group: wells in Lower Republican NRD
+
+
+## Results
+
+## Conclusions
+
+## Extension

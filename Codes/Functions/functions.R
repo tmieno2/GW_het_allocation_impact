@@ -296,6 +296,7 @@ get_impact <- function(cf_res,data_base,var_ls,var_name){
 
 # treat_var <- 'tgts'
 
+
 gen_impact_viz <- function(cf_res,data_base,treat_var,var_ls){
 	# cf_res= cf1; data_base=data_reg_case3; treat_var='treat2'; var_ls= cov_ls
 
